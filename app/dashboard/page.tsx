@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useExpensesStore } from "@/store/expenses.store";
-import { normalizeForSearch } from "@/lib/utils";
+import { useAccountsStore } from "@/store/accounts.store";
+import { useSubscriptionsStore } from "@/store/subscriptions.store";
+import { normalizeForSearch, cn } from "@/lib/utils";
+import { computeBalances, computeAccountDueNow } from "@/features/expenses/balance";
 import { ExpenseCard } from "@/features/expenses/components/ExpenseCard";
 import { CreateExpenseDialog } from "@/features/expenses/components/CreateExpenseDialog";
+import { AccountPaymentDialog } from "@/features/accounts/components/AccountPaymentDialog";
 import {
     ExpenseFilters,
     ExpenseFiltersState,
@@ -13,11 +17,42 @@ import {
 
 export default function DashboardPage() {
     const { expenses, loadExpenses } = useExpensesStore();
+    const payBilledDebt = useExpensesStore(state => state.payBilledDebt);
+    const { accounts, loadAccounts } = useAccountsStore();
+    const { loadSubscriptions, syncDueEntries } = useSubscriptionsStore();
     const [filters, setFilters] = useState<ExpenseFiltersState>(emptyExpenseFilters);
+    const [dismissedAccountIds, setDismissedAccountIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
-        loadExpenses();
-    }, [loadExpenses]);
+        async function init() {
+            await loadExpenses();
+            await loadAccounts();
+            await loadSubscriptions();
+            await syncDueEntries();
+        }
+        init();
+    }, [loadExpenses, loadAccounts, loadSubscriptions, syncDueEntries]);
+
+    const { actualBalance, debt, generalBalance } = useMemo(() => {
+        return computeBalances(expenses, accounts);
+    }, [expenses, accounts]);
+
+    const duePrompt = useMemo(() => {
+        const candidate = accounts
+            .filter(account => !dismissedAccountIds.has(account.id))
+            .map(account => ({ account, dueNow: computeAccountDueNow(account, expenses) }))
+            .find(entry => entry.dueNow > 0);
+        return candidate ?? null;
+    }, [accounts, expenses, dismissedAccountIds]);
+
+    function dismissDueAccount(id: string) {
+        setDismissedAccountIds(prev => new Set(prev).add(id));
+    }
+
+    async function confirmDueAccountPayment(amount: number) {
+        if (!duePrompt) return;
+        await payBilledDebt(duePrompt.account.id, amount, duePrompt.account.paymentDay!);
+    }
 
     const categories = useMemo(() => {
         return Array.from(new Set(expenses.map(e => e.category).filter(Boolean)));
@@ -56,6 +91,50 @@ export default function DashboardPage() {
 
     return (
         <section className="p-6 space-y-8">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-1 rounded-lg border p-4">
+                    <span className="text-sm font-medium text-muted-foreground">
+                        Balance general
+                    </span>
+                    <p
+                        className={cn(
+                            "text-2xl font-semibold tabular-nums",
+                            generalBalance < 0 ? "text-expense" : "text-income"
+                        )}
+                    >
+                        ${generalBalance.toLocaleString()}
+                    </p>
+                </div>
+
+                <div className="space-y-1 rounded-lg border p-4">
+                    <span className="text-sm font-medium text-muted-foreground">
+                        Balance actual
+                    </span>
+                    <p
+                        className={cn(
+                            "text-2xl font-semibold tabular-nums",
+                            actualBalance < 0 ? "text-expense" : "text-income"
+                        )}
+                    >
+                        ${actualBalance.toLocaleString()}
+                    </p>
+                </div>
+
+                <div className="space-y-1 rounded-lg border p-4">
+                    <span className="text-sm font-medium text-muted-foreground">
+                        Deuda pendiente
+                    </span>
+                    <p
+                        className={cn(
+                            "text-2xl font-semibold tabular-nums",
+                            debt > 0 ? "text-expense" : "text-income"
+                        )}
+                    >
+                        ${debt.toLocaleString()}
+                    </p>
+                </div>
+            </div>
+
             <div className="space-y-3">
                 <h2 className="text-lg font-semibold">
                     Registrar movimiento
@@ -87,6 +166,18 @@ export default function DashboardPage() {
                     </p>
                 )}
             </div>
+
+            <AccountPaymentDialog
+                key={duePrompt?.account.id ?? "none"}
+                variant="reminder"
+                account={duePrompt?.account ?? null}
+                amountDue={duePrompt?.dueNow ?? 0}
+                open={!!duePrompt}
+                onOpenChange={open => {
+                    if (!open && duePrompt) dismissDueAccount(duePrompt.account.id);
+                }}
+                onConfirmPayment={confirmDueAccountPayment}
+            />
         </section>
     );
 }

@@ -17,6 +17,8 @@ import {
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard" },
+  { label: "Cuentas", href: "/accounts" },
+  { label: "Suscripciones", href: "/subscriptions" },
 ];
 
 export function Navbar() {

@@ -10,8 +10,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useExpensesStore } from "@/store/expenses.store";
+import { useAccountsStore } from "@/store/accounts.store";
 import { Expense, ExpenseType } from "@/features/expenses/expenses.types";
+
+const NO_ACCOUNT = "none";
 
 function nowLocalDateTime() {
   const now = new Date();
@@ -44,36 +54,62 @@ export function ExpenseDialog(props: Props) {
 
   const addExpense = useExpensesStore(state => state.addExpense);
   const updateExpense = useExpensesStore(state => state.updateExpense);
+  const deleteExpense = useExpensesStore(state => state.deleteExpense);
+  const accounts = useAccountsStore(state => state.accounts);
 
   const [type, setType] = useState<ExpenseType>("expense");
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [date, setDate] = useState(nowLocalDateTime());
+  const [affectsBalance, setAffectsBalance] = useState(true);
+  const [accountId, setAccountId] = useState(NO_ACCOUNT);
+  const [useInstallments, setUseInstallments] = useState(false);
+  const [installments, setInstallments] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const amountRef = useRef<HTMLInputElement>(null);
+
+  const selectedAccount = accounts.find(a => a.id === accountId);
+  const isCreditSelected = selectedAccount?.type === "credit";
+  const isPaying = props.mode === "edit" && props.expense.pending;
 
   function handleOpenAutoFocus(e: Event) {
     e.preventDefault();
 
     if (props.mode === "edit") {
-      setType(props.expense.type);
-      setTitle(props.expense.title);
-      setAmount(String(props.expense.amount));
-      setCategory(props.expense.category);
-      setDate(toDateTimeLocalValue(props.expense.date));
+      const expense = props.expense;
+      setType(expense.type);
+      setTitle(expense.title);
+      setAmount(expense.amount === 0 && isPaying ? "" : String(expense.amount));
+      setCategory(expense.category);
+      setDate(isPaying ? nowLocalDateTime() : toDateTimeLocalValue(expense.date));
+      setAffectsBalance(expense.affectsBalance);
+      setAccountId(
+        isPaying
+          ? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT
+          : expense.accountId ?? NO_ACCOUNT
+      );
+      setUseInstallments(!!expense.installments);
+      setInstallments(expense.installments ? String(expense.installments) : "");
     } else {
       setType("expense");
       setTitle(props.initialTitle?.trim() ?? "");
       setAmount("");
       setCategory("");
       setDate(nowLocalDateTime());
+      setAffectsBalance(true);
+      setAccountId(accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT);
+      setUseInstallments(false);
+      setInstallments("");
     }
 
     setError(null);
+    setConfirmingDelete(false);
     amountRef.current?.focus();
   }
 
@@ -91,6 +127,21 @@ export function ExpenseDialog(props: Props) {
       return;
     }
 
+    const parsedInstallments = installments ? Number(installments) : undefined;
+
+    if (
+      isCreditSelected &&
+      useInstallments &&
+      (!Number.isInteger(parsedInstallments) || parsedInstallments! < 2)
+    ) {
+      setError("La cantidad de cuotas debe ser un número entero mayor o igual a 2.");
+      return;
+    }
+
+    const resolvedAccountId = accountId === NO_ACCOUNT ? undefined : accountId;
+    const resolvedInstallments =
+      isCreditSelected && useInstallments ? parsedInstallments : undefined;
+
     setSaving(true);
     setError(null);
 
@@ -103,6 +154,10 @@ export function ExpenseDialog(props: Props) {
           amount: parsedAmount,
           category: category.trim(),
           date,
+          affectsBalance,
+          accountId: resolvedAccountId,
+          installments: resolvedInstallments,
+          pending: false,
         });
       } else {
         await addExpense({
@@ -112,6 +167,11 @@ export function ExpenseDialog(props: Props) {
           amount: parsedAmount,
           category: category.trim(),
           date,
+          affectsBalance,
+          accountId: resolvedAccountId,
+          installments: resolvedInstallments,
+          paidAmount: 0,
+          pending: false,
         });
       }
 
@@ -124,12 +184,32 @@ export function ExpenseDialog(props: Props) {
     }
   }
 
+  async function handleDelete() {
+    if (props.mode !== "edit") return;
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      await deleteExpense(props.expense.id);
+      onOpenChange(false);
+      onSaved?.();
+    } catch {
+      setError("No se pudo eliminar. Intenta de nuevo.");
+      setDeleting(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
         <DialogHeader>
           <DialogTitle>
-            {props.mode === "edit" ? "Editar movimiento" : "Nuevo movimiento"}
+            {props.mode === "edit"
+              ? isPaying
+                ? "Pagar suscripción"
+                : "Editar movimiento"
+              : "Nuevo movimiento"}
           </DialogTitle>
         </DialogHeader>
 
@@ -201,12 +281,131 @@ export function ExpenseDialog(props: Props) {
             />
           </div>
 
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Afecta el balance</label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={affectsBalance ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAffectsBalance(true)}
+              >
+                Sí
+              </Button>
+              <Button
+                type="button"
+                variant={!affectsBalance ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAffectsBalance(false)}
+              >
+                No, es solo referencial
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Cuenta (opcional)</label>
+            <Select
+              value={accountId}
+              onValueChange={value => {
+                setAccountId(value);
+                setUseInstallments(false);
+                setInstallments("");
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_ACCOUNT}>Sin cuenta</SelectItem>
+                {accounts.map(account => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isCreditSelected && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Pagar en cuotas</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant={!useInstallments ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setUseInstallments(false)}
+                >
+                  No
+                </Button>
+                <Button
+                  type="button"
+                  variant={useInstallments ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setUseInstallments(true)}
+                >
+                  Sí
+                </Button>
+                {useInstallments && (
+                  <Input
+                    type="number"
+                    min="2"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="Cantidad de cuotas"
+                    value={installments}
+                    onChange={e => setInstallments(e.target.value)}
+                    className="w-40"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className={props.mode === "edit" ? "sm:justify-between" : undefined}>
+          {props.mode === "edit" && (
+            confirmingDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  ¿Eliminar este movimiento?
+                </span>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Eliminando..." : "Confirmar"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                Eliminar
+              </Button>
+            )
+          )}
+
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Guardando..." : "Guardar"}
+            {saving ? "Guardando..." : isPaying ? "Pagar" : "Guardar"}
           </Button>
         </DialogFooter>
       </DialogContent>
