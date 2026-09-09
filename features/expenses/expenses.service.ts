@@ -15,6 +15,12 @@ export const expensesService = {
     return expense;
   },
 
+  update: async (expense: Expense): Promise<Expense> => {
+    await delay(300);
+    expenses = expenses.map(e => (e.id === expense.id ? expense : e));
+    return expense;
+  },
+
   delete: async (id: string): Promise<void> => {
     await delay(300);
     expenses = expenses.filter(e => e.id !== id);

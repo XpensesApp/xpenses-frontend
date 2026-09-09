@@ -6,6 +6,7 @@ type ExpensesState = {
   expenses: Expense[];
   loadExpenses: () => Promise<void>;
   addExpense: (expense: Expense) => Promise<void>;
+  updateExpense: (expense: Expense) => Promise<void>;
 };
 
 export const useExpensesStore = create<ExpensesState>((set) => ({
@@ -20,6 +21,13 @@ export const useExpensesStore = create<ExpensesState>((set) => ({
     await expensesService.create(expense);
     set(state => ({
       expenses: [expense, ...state.expenses],
+    }));
+  },
+
+  updateExpense: async (expense) => {
+    await expensesService.update(expense);
+    set(state => ({
+      expenses: state.expenses.map(e => (e.id === expense.id ? expense : e)),
     }));
   },
 }));
