@@ -35,6 +35,7 @@ Do not implement future functionality merely because it is described here. This 
 * clsx
 * tailwind-merge
 * lucide-react
+* React Compiler
 * Recharts is planned for data visualization
 
 Path alias:
@@ -118,6 +119,14 @@ Do not automatically place all remotely fetched data into Zustand.
 
 Zustand is better suited to client-side state that genuinely benefits from centralized/shared state.
 
+### Financial data model
+
+Credit-card debt (`features/expenses/balance.ts`) only persists facts: a purchase (an expense linked to an account, with the card's payment day snapshotted onto it at the time of purchase), a payment (amount, date, source account), and the account itself. Current debt, what's due now, upcoming obligations, and remaining installments are always computed from those facts, never stored — check whether a new "how much/when" value is derivable before adding a field for it.
+
+A purchase's snapshotted payment day is never re-read from the account afterward, so editing a card's settings never rewrites the schedule of past purchases. A payment is never linked to a specific purchase; attribution (which purchase it "covers") is always recomputed, oldest obligation first.
+
+Accounts remain optional on every transaction. An entry with no account is "untracked" and is treated as a direct cash movement — this fallback must keep working as account-related features grow; do not make account selection required.
+
 ---
 
 ## 5. State Management
@@ -135,6 +144,8 @@ Prefer:
 Examples of state that may benefit from Zustand in the future include globally relevant user/application information or client-side preferences.
 
 Do not introduce Zustand simply because the project already uses it.
+
+When one store's action needs another store's current data, read it via `useOtherStore.getState()` rather than coupling the stores' hooks together. Example: `store/subscriptions.store.ts`'s `syncDueEntries` reads and writes `useExpensesStore` this way.
 
 ---
 
@@ -157,6 +168,8 @@ When implementing a feature, consider whether the functionality belongs on the s
 
 Avoid introducing unnecessary client-side fetching when the functionality can naturally be handled server-side.
 
+React Compiler is enabled (see ESLint's `react-hooks` rules, e.g. `react-hooks/set-state-in-effect`, `react-hooks/preserve-manual-memoization`). Do not reset a component's state with `useEffect` + `setState` in response to a prop change — pass a `key` from the parent to force a remount instead.
+
 ---
 
 ## 7. Styling and UI
@@ -172,6 +185,8 @@ Use `class-variance-authority` when a component genuinely requires multiple visu
 Avoid creating custom abstractions around shadcn components unless there is a concrete project-specific reason.
 
 Keep project-specific components separate from generic UI primitives.
+
+shadcn's `Select` (Radix) rejects an empty-string item value. For an optional selection, use a sentinel string (e.g. `"none"`) and convert it to/from `undefined` at the boundary — see `NO_ACCOUNT` in `ExpenseDialog`.
 
 ---
 
@@ -218,6 +233,8 @@ Do not require the user to provide information that can reasonably be inferred.
 
 When implementing expense-related UX, prioritize speed and low interaction cost.
 
+The entry dialog has grown to support credit-card and subscription features (account, installments, affects-balance). Keep new fields progressively disclosed — visible only when relevant, e.g. installments only appear once a credit account is selected — rather than always-visible, to protect the fast-entry goal above.
+
 ---
 
 ## 9. Product Direction
@@ -242,42 +259,11 @@ The application is expected to eventually support:
 
 ### Recurring transactions
 
-Users should eventually be able to define recurring:
+Implemented as Subscriptions (`features/subscriptions/`). A subscription has a title, an optional fixed amount (undefined means variable — set when the generated entry is paid), a category, a billing day (1-31), and an optional end date; it can be active or paused, and can only be deleted while paused.
 
-* Income
-* Expenses
+The "backend creates an entry when it's due" behavior is currently simulated client-side (`syncDueEntries` in `store/subscriptions.store.ts`): on load, it checks each subscription's most recent billing date and creates a `pending` entry if that cycle doesn't have one yet. Paying a pending entry (via the normal entry dialog) assigns it an account and clears `pending`.
 
-Examples:
-
-```text
-Salary
-Internet
-Spotify
-Rent
-```
-
-Recurring transactions should support configurable periods.
-
-Examples:
-
-```text
-Monthly
-Every 5 days
-```
-
-The application should eventually be able to determine when a recurring transaction is due and ask the user for confirmation.
-
-For example:
-
-```text
-"Did you receive your salary?"
-
-"Did you pay Spotify?"
-```
-
-The exact scheduling and recurrence model has not yet been designed.
-
-Do not implement a recurrence abstraction until the requirements for it are defined.
+Recurrence is monthly-only, driven by a single day-of-month. Arbitrary periods (e.g. "every 5 days") are not implemented.
 
 ### Budgets
 
@@ -325,23 +311,21 @@ Do not assume Cognito is permanently selected until the decision is made.
 
 ## 11. Current Known State
 
-There are currently two routes:
+Routes:
 
 ```text
 /
- /dashboard
+/dashboard
+/accounts
+/subscriptions
 ```
 
-Both currently render the expense list, although their implementations differ.
+`/` and `/dashboard` both render the expense list, although their implementations differ. This duplication appears to be leftover development scaffolding and should not be treated as an intentional architectural pattern. The canonical route has not yet been decided.
 
-This duplication appears to be leftover development scaffolding and should not be treated as an intentional architectural pattern.
-
-The canonical route has not yet been decided.
+`/accounts` and `/subscriptions` were added later and are each the single implementation for their feature.
 
 Current unused/incomplete functionality includes:
 
-* `expensesService.delete`
-* `addExpense` in the Zustand store
 * Several shadcn components that are not yet connected to real functionality
 
 Do not remove or refactor these automatically unless the current task requires it.
