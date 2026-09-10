@@ -4,7 +4,8 @@ export type Expense = {
   id: string;
   title: string;
   amount: number;
-  category: string;
+  /** Categories/tags this entry belongs to. An empty array means uncategorized. */
+  categories: string[];
   date: string;
   type: ExpenseType;
   /** Whether this entry affects the balance total, or is only referencial. Defaults to true. */

@@ -87,7 +87,7 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
         id: crypto.randomUUID(),
         title: subscription.title,
         amount: subscription.amount ?? 0,
-        category: subscription.category,
+        categories: subscription.category ? [subscription.category] : [],
         date: toISODate(dueDate),
         type: subscription.type,
         affectsBalance: subscription.affectsBalance,

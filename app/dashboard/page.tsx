@@ -39,7 +39,7 @@ export default function DashboardPage() {
     }, [expenses, payments]);
 
     const categories = useMemo(() => {
-        return Array.from(new Set(expenses.map(e => e.category).filter(Boolean)));
+        return Array.from(new Set(expenses.flatMap(e => e.categories)));
     }, [expenses]);
 
     const filteredExpenses = useMemo(() => {
@@ -49,7 +49,7 @@ export default function DashboardPage() {
             if (search && !normalizeForSearch(expense.title).includes(search)) {
                 return false;
             }
-            if (filters.category && expense.category !== filters.category) {
+            if (filters.category && !expense.categories.includes(filters.category)) {
                 return false;
             }
             return true;

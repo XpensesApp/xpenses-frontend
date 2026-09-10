@@ -16,6 +16,8 @@ type Props = {
   expense: Expense;
 };
 
+const MAX_VISIBLE_CATEGORIES = 3;
+
 export function ExpenseCard({ expense }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const isIncome = expense.type === "income";
@@ -35,15 +37,26 @@ export function ExpenseCard({ expense }: Props) {
       : null;
   const hasRemainingDebt = !!installmentProgress && installmentProgress.paid < installmentProgress.total;
 
+  const visibleCategories = expense.categories.slice(0, MAX_VISIBLE_CATEGORIES);
+  const hiddenCategories = expense.categories.slice(MAX_VISIBLE_CATEGORIES);
+
   return (
     <Card className="py-0">
       <CardContent className="flex items-center gap-3 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="truncate font-medium">{expense.title}</span>
-            {expense.category && (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {expense.category}
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="min-w-0 truncate font-medium">{expense.title}</span>
+            {visibleCategories.map(category => (
+              <span key={category} className="shrink-0 text-xs text-muted-foreground">
+                {category}
+              </span>
+            ))}
+            {hiddenCategories.length > 0 && (
+              <span
+                className="shrink-0 text-xs text-muted-foreground"
+                title={hiddenCategories.join(", ")}
+              >
+                +{hiddenCategories.length}
               </span>
             )}
             {account && (

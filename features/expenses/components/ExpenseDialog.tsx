@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,7 +61,8 @@ export function ExpenseDialog(props: Props) {
   const [type, setType] = useState<ExpenseType>("expense");
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryInput, setCategoryInput] = useState("");
   const [date, setDate] = useState(nowLocalDateTime());
   const [affectsBalance, setAffectsBalance] = useState(true);
   const [accountId, setAccountId] = useState(NO_ACCOUNT);
@@ -78,6 +80,17 @@ export function ExpenseDialog(props: Props) {
   const isCreditSelected = selectedAccount?.type === "credit";
   const isPaying = props.mode === "edit" && props.expense.pending;
 
+  function addCategory(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setCategories(prev => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setCategoryInput("");
+  }
+
+  function removeCategory(value: string) {
+    setCategories(prev => prev.filter(c => c !== value));
+  }
+
   function handleOpenAutoFocus(e: Event) {
     e.preventDefault();
 
@@ -86,7 +99,8 @@ export function ExpenseDialog(props: Props) {
       setType(expense.type);
       setTitle(expense.title);
       setAmount(expense.amount === 0 && isPaying ? "" : String(expense.amount));
-      setCategory(expense.category);
+      setCategories(expense.categories);
+      setCategoryInput("");
       setDate(isPaying ? nowLocalDateTime() : toDateTimeLocalValue(expense.date));
       setAffectsBalance(expense.affectsBalance);
       setAccountId(
@@ -100,7 +114,8 @@ export function ExpenseDialog(props: Props) {
       setType("expense");
       setTitle(props.initialTitle?.trim() ?? "");
       setAmount("");
-      setCategory("");
+      setCategories([]);
+      setCategoryInput("");
       setDate(nowLocalDateTime());
       setAffectsBalance(true);
       setAccountId(accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT);
@@ -151,6 +166,11 @@ export function ExpenseDialog(props: Props) {
     const resolvedAccountId = accountId === NO_ACCOUNT ? undefined : accountId;
     const resolvedInstallments =
       isCreditSelected && useInstallments ? parsedInstallments : undefined;
+    const pendingCategory = categoryInput.trim();
+    const resolvedCategories =
+      pendingCategory && !categories.includes(pendingCategory)
+        ? [...categories, pendingCategory]
+        : categories;
 
     let resolvedPaymentDay: number | undefined;
     if (props.mode === "edit" && accountUnchanged) {
@@ -169,7 +189,7 @@ export function ExpenseDialog(props: Props) {
           type,
           title: trimmedTitle,
           amount: parsedAmount,
-          category: category.trim(),
+          categories: resolvedCategories,
           date,
           affectsBalance,
           accountId: resolvedAccountId,
@@ -183,7 +203,7 @@ export function ExpenseDialog(props: Props) {
           type,
           title: trimmedTitle,
           amount: parsedAmount,
-          category: category.trim(),
+          categories: resolvedCategories,
           date,
           affectsBalance,
           accountId: resolvedAccountId,
@@ -288,11 +308,38 @@ export function ExpenseDialog(props: Props) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Categoría (opcional)</label>
+            <label className="text-sm font-medium">Categorías (opcional)</label>
             <Input
-              value={category}
-              onChange={e => setCategory(e.target.value)}
+              value={categoryInput}
+              onChange={e => setCategoryInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === ",") {
+                  e.preventDefault();
+                  addCategory(categoryInput);
+                }
+              }}
+              placeholder="Escribe y presiona Enter"
             />
+            {categories.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {categories.map(cat => (
+                  <span
+                    key={cat}
+                    className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
+                  >
+                    {cat}
+                    <button
+                      type="button"
+                      onClick={() => removeCategory(cat)}
+                      aria-label={`Quitar categoría ${cat}`}
+                      className="hover:text-foreground"
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1">
