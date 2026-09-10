@@ -59,25 +59,29 @@ export function AccountCard({ account }: Props) {
   return (
     <Card className="py-0">
       <CardContent className="flex items-center gap-3 px-3 py-2">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={
-            account.isDefault ? "Quitar cuenta por defecto" : "Marcar como cuenta por defecto"
-          }
-          onClick={() => setDefaultAccount(account.id)}
-        >
-          <StarIcon
-            className={cn(account.isDefault && "fill-current text-amber-500")}
-          />
-        </Button>
+        {!account.isUntracked && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={
+              account.isDefault ? "Quitar cuenta por defecto" : "Marcar como cuenta por defecto"
+            }
+            onClick={() => setDefaultAccount(account.id)}
+          >
+            <StarIcon
+              className={cn(account.isDefault && "fill-current text-amber-500")}
+            />
+          </Button>
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="truncate font-medium">{account.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {accountTypeLabels[account.type]}
-            </span>
+            {!account.isUntracked && (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {accountTypeLabels[account.type]}
+              </span>
+            )}
           </div>
           {account.paymentDay && (
             <span className="text-xs text-muted-foreground">
@@ -134,22 +138,26 @@ export function AccountCard({ account }: Props) {
           </Button>
         )}
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Editar cuenta"
-          onClick={() => setEditOpen(true)}
-        >
-          <PencilIcon />
-        </Button>
+        {!account.isUntracked && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Editar cuenta"
+            onClick={() => setEditOpen(true)}
+          >
+            <PencilIcon />
+          </Button>
+        )}
       </CardContent>
 
-      <AccountDialog
-        mode="edit"
-        account={account}
-        open={editOpen}
-        onOpenChange={setEditOpen}
-      />
+      {!account.isUntracked && (
+        <AccountDialog
+          mode="edit"
+          account={account}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      )}
 
       {canPay && nextObligation && (
         <AccountPaymentDialog

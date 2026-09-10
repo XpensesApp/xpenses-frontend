@@ -79,6 +79,7 @@ export function ExpenseDialog(props: Props) {
   const selectedAccount = accounts.find(a => a.id === accountId);
   const isCreditSelected = selectedAccount?.type === "credit";
   const isPaying = props.mode === "edit" && props.expense.pending;
+  const installmentsApply = isCreditSelected && type === "expense";
 
   function addCategory(value: string) {
     const trimmed = value.trim();
@@ -145,7 +146,7 @@ export function ExpenseDialog(props: Props) {
     const parsedInstallments = installments ? Number(installments) : undefined;
 
     if (
-      isCreditSelected &&
+      installmentsApply &&
       useInstallments &&
       (!Number.isInteger(parsedInstallments) || parsedInstallments! < 2)
     ) {
@@ -165,7 +166,7 @@ export function ExpenseDialog(props: Props) {
 
     const resolvedAccountId = accountId === NO_ACCOUNT ? undefined : accountId;
     const resolvedInstallments =
-      isCreditSelected && useInstallments ? parsedInstallments : undefined;
+      installmentsApply && useInstallments ? parsedInstallments : undefined;
     const pendingCategory = categoryInput.trim();
     const resolvedCategories =
       pendingCategory && !categories.includes(pendingCategory)
@@ -267,15 +268,14 @@ export function ExpenseDialog(props: Props) {
                 type="button"
                 variant={type === "income" ? "default" : "outline"}
                 size="sm"
-                disabled={isCreditSelected}
                 onClick={() => setType("income")}
               >
                 Ingreso
               </Button>
             </div>
-            {isCreditSelected && (
+            {isCreditSelected && type === "income" && (
               <p className="text-xs text-muted-foreground">
-                Los movimientos con tarjeta de crédito son siempre gastos.
+                Se registrará como un reembolso que reduce la deuda de la tarjeta.
               </p>
             )}
           </div>
@@ -382,9 +382,6 @@ export function ExpenseDialog(props: Props) {
                 setAccountId(value);
                 setUseInstallments(false);
                 setInstallments("");
-                if (accounts.find(a => a.id === value)?.type === "credit") {
-                  setType("expense");
-                }
               }}
             >
               <SelectTrigger className="w-full">
@@ -401,7 +398,7 @@ export function ExpenseDialog(props: Props) {
             </Select>
           </div>
 
-          {isCreditSelected && (
+          {installmentsApply && (
             <div className="space-y-1">
               <label className="text-sm font-medium">Pagar en cuotas</label>
               <div className="flex flex-wrap items-center gap-2">

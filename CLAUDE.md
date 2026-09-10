@@ -125,7 +125,9 @@ Credit-card debt (`features/expenses/balance.ts`) only persists facts: a purchas
 
 A purchase's snapshotted payment day is never re-read from the account afterward, so editing a card's settings never rewrites the schedule of past purchases. A payment is never linked to a specific purchase; attribution (which purchase it "covers") is always recomputed, oldest obligation first.
 
-Accounts remain optional on every transaction. An entry with no account is "untracked" and is treated as a direct cash movement — this fallback must keep working as account-related features grow; do not make account selection required.
+A credit account can also carry income entries (refunds), same payment-day snapshotting as a purchase. A refund never creates its own installment schedule — it has no installments — and is instead folded into the same pool as payments, reducing the oldest outstanding installments first.
+
+Accounts remain optional on every transaction. An entry with no account is "untracked" and is treated as a direct cash movement — this fallback must keep working as account-related features grow; do not make account selection required. `/accounts` represents all untracked entries as a synthetic, non-persisted "Untracked" account (`features/accounts/accounts.types.ts`'s `untrackedAccount`) so their net balance is visible the same way a real account's is; it's injected only for display (never created/edited/deleted through the accounts store) and only shown once its balance is non-zero.
 
 ---
 

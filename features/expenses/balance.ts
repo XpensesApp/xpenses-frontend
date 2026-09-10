@@ -66,15 +66,21 @@ type LedgerItem = {
  * source of truth everything else in this module is derived from — a
  * payment is never attributed to a specific purchase when it's recorded,
  * only when this is read.
+ *
+ * An income entry linked to the card (a refund) never creates its own
+ * obligation — it has no installments — and instead is folded into the same
+ * pool as payments, reducing the oldest outstanding installments first.
  */
 export function getCardLedger(
   cardAccountId: string,
   expenses: Expense[],
   payments: Payment[]
 ): LedgerItem[] {
-  const purchases = expenses.filter(
+  const linkedEntries = expenses.filter(
     e => e.accountId === cardAccountId && e.paymentDay != null && e.affectsBalance && !e.pending
   );
+  const purchases = linkedEntries.filter(e => e.type === "expense");
+  const refunds = linkedEntries.filter(e => e.type === "income");
 
   const flattened = purchases.flatMap(purchase =>
     getInstallmentSchedule(purchase).map(installment => ({
@@ -90,9 +96,11 @@ export function getCardLedger(
     return dueDiff !== 0 ? dueDiff : a.purchaseDate.localeCompare(b.purchaseDate);
   });
 
-  let pool = payments
-    .filter(p => p.cardAccountId === cardAccountId)
-    .reduce((total, p) => total + p.amount, 0);
+  let pool =
+    payments
+      .filter(p => p.cardAccountId === cardAccountId)
+      .reduce((total, p) => total + p.amount, 0) +
+    refunds.reduce((total, r) => total + r.amount, 0);
 
   return flattened.map(({ purchaseId, dueDate, amount }) => {
     const consumed = Math.min(pool, amount);
@@ -224,7 +232,7 @@ export function computeBalances(expenses: Expense[], payments: Payment[]) {
   };
 }
 
-/** Balance for a single account: card debt for credit accounts, net cash movement (spending minus payments made from it) otherwise. */
+/** Balance for a single account: card debt for credit accounts, net cash movement (spending minus payments made from it) otherwise. The synthetic untracked account matches entries with no linked account at all, rather than a specific id. */
 export function computeAccountBalance(
   account: Account,
   expenses: Expense[],
@@ -234,12 +242,16 @@ export function computeAccountBalance(
     return computeCardDebt(account.id, expenses, payments);
   }
 
+  const matches = account.isUntracked
+    ? (id: string | undefined) => !id
+    : (id: string | undefined) => id === account.id;
+
   const spent = expenses
-    .filter(e => e.affectsBalance && !e.pending && e.accountId === account.id)
+    .filter(e => e.affectsBalance && !e.pending && matches(e.accountId))
     .reduce((total, e) => total + signedAmount(e), 0);
 
   const paidOut = payments
-    .filter(p => p.sourceAccountId === account.id)
+    .filter(p => matches(p.sourceAccountId))
     .reduce((total, p) => total + p.amount, 0);
 
   return spent - paidOut;
