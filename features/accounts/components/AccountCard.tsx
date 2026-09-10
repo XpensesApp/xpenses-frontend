@@ -7,10 +7,27 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useExpensesStore } from "@/store/expenses.store";
-import { computeAccountBalance } from "@/features/expenses/balance";
+import { usePaymentsStore } from "@/store/payments.store";
+import {
+  computeAccountBalance,
+  computeNextCardObligation,
+  computeUpcomingObligations,
+} from "@/features/expenses/balance";
+import { periodKey } from "@/lib/dates";
 import { Account } from "../accounts.types";
 import { AccountDialog, accountTypeLabels } from "./AccountDialog";
 import { AccountPaymentDialog } from "./AccountPaymentDialog";
+
+const periodFormatter = new Intl.DateTimeFormat(undefined, { month: "short" });
+
+function formatPeriod(period: string) {
+  const [year, month] = period.split("-").map(Number);
+  return periodFormatter.format(new Date(year, month - 1, 1));
+}
+
+function formatDueDate(date: Date) {
+  return date.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+}
 
 type Props = {
   account: Account;
@@ -20,13 +37,24 @@ export function AccountCard({ account }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const expenses = useExpensesStore(state => state.expenses);
+  const payments = usePaymentsStore(state => state.payments);
   const setDefaultAccount = useAccountsStore(state => state.setDefaultAccount);
-  const payFullDebt = useExpensesStore(state => state.payFullDebt);
+  const addPayment = usePaymentsStore(state => state.addPayment);
 
-  const balance = computeAccountBalance(account, expenses);
+  const balance = computeAccountBalance(account, expenses, payments);
   const isDebt = account.type === "credit";
   const isNegative = isDebt ? balance > 0 : balance < 0;
-  const canPay = isDebt && balance > 0;
+
+  const nextObligation = isDebt
+    ? computeNextCardObligation(account.id, expenses, payments)
+    : null;
+  const canPay = !!nextObligation?.isDue;
+
+  const upcoming = isDebt && nextObligation
+    ? computeUpcomingObligations(account.id, expenses, payments)
+        .filter(o => o.period > periodKey(nextObligation.dueDate))
+        .slice(0, 3)
+    : [];
 
   return (
     <Card className="py-0">
@@ -55,6 +83,27 @@ export function AccountCard({ account }: Props) {
             <span className="text-xs text-muted-foreground">
               Día de pago: {account.paymentDay}
             </span>
+          )}
+          {nextObligation && (
+            <div
+              className={cn(
+                "text-xs",
+                nextObligation.isDue
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground"
+              )}
+            >
+              Vence {formatDueDate(nextObligation.dueDate)}: $
+              {nextObligation.amount.toLocaleString()}
+            </div>
+          )}
+          {upcoming.length > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Después:{" "}
+              {upcoming
+                .map(o => `${formatPeriod(o.period)} $${o.amount.toLocaleString()}`)
+                .join(" · ")}
+            </div>
           )}
         </div>
 
@@ -102,14 +151,22 @@ export function AccountCard({ account }: Props) {
         onOpenChange={setEditOpen}
       />
 
-      {canPay && (
+      {canPay && nextObligation && (
         <AccountPaymentDialog
-          variant="manual"
+          key={payOpen ? "open" : "closed"}
           account={account}
-          amountDue={balance}
+          amountDue={nextObligation.amount}
           open={payOpen}
           onOpenChange={setPayOpen}
-          onConfirmPayment={amount => payFullDebt(account.id, amount)}
+          onConfirmPayment={(amount, sourceAccountId) =>
+            addPayment({
+              id: crypto.randomUUID(),
+              cardAccountId: account.id,
+              amount,
+              date: new Date().toISOString(),
+              sourceAccountId,
+            })
+          }
         />
       )}
     </Card>

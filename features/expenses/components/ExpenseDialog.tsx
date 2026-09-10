@@ -138,9 +138,26 @@ export function ExpenseDialog(props: Props) {
       return;
     }
 
+    const accountUnchanged =
+      props.mode === "edit" &&
+      !isPaying &&
+      accountId === (props.expense.accountId ?? NO_ACCOUNT);
+
+    if (!accountUnchanged && isCreditSelected && selectedAccount?.paymentDay == null) {
+      setError("Esta tarjeta no tiene día de pago configurado. Edítala en Cuentas antes de usarla.");
+      return;
+    }
+
     const resolvedAccountId = accountId === NO_ACCOUNT ? undefined : accountId;
     const resolvedInstallments =
       isCreditSelected && useInstallments ? parsedInstallments : undefined;
+
+    let resolvedPaymentDay: number | undefined;
+    if (props.mode === "edit" && accountUnchanged) {
+      resolvedPaymentDay = props.expense.paymentDay;
+    } else {
+      resolvedPaymentDay = isCreditSelected ? selectedAccount?.paymentDay : undefined;
+    }
 
     setSaving(true);
     setError(null);
@@ -157,6 +174,7 @@ export function ExpenseDialog(props: Props) {
           affectsBalance,
           accountId: resolvedAccountId,
           installments: resolvedInstallments,
+          paymentDay: resolvedPaymentDay,
           pending: false,
         });
       } else {
@@ -170,7 +188,7 @@ export function ExpenseDialog(props: Props) {
           affectsBalance,
           accountId: resolvedAccountId,
           installments: resolvedInstallments,
-          paidAmount: 0,
+          paymentDay: resolvedPaymentDay,
           pending: false,
         });
       }
@@ -229,11 +247,17 @@ export function ExpenseDialog(props: Props) {
                 type="button"
                 variant={type === "income" ? "default" : "outline"}
                 size="sm"
+                disabled={isCreditSelected}
                 onClick={() => setType("income")}
               >
                 Ingreso
               </Button>
             </div>
+            {isCreditSelected && (
+              <p className="text-xs text-muted-foreground">
+                Los movimientos con tarjeta de crédito son siempre gastos.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -311,6 +335,9 @@ export function ExpenseDialog(props: Props) {
                 setAccountId(value);
                 setUseInstallments(false);
                 setInstallments("");
+                if (accounts.find(a => a.id === value)?.type === "credit") {
+                  setType("expense");
+                }
               }}
             >
               <SelectTrigger className="w-full">

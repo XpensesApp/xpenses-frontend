@@ -6,7 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
-import { countPaidInstallments } from "@/features/expenses/balance";
+import { useExpensesStore } from "@/store/expenses.store";
+import { usePaymentsStore } from "@/store/payments.store";
+import { countRemainingInstallments } from "@/features/expenses/balance";
 import { Expense } from "../expenses.types";
 import { ExpenseDialog } from "./ExpenseDialog";
 
@@ -23,13 +25,15 @@ export function ExpenseCard({ expense }: Props) {
   const subscription = useSubscriptionsStore(state =>
     state.subscriptions.find(s => s.id === expense.subscriptionId)
   );
+  const allExpenses = useExpensesStore(state => state.expenses);
+  const payments = usePaymentsStore(state => state.payments);
 
-  const isCreditPurchase = account?.type === "credit" && expense.type === "expense";
-  const remainingDebt = expense.amount - expense.paidAmount;
-  const paidInstallments =
-    isCreditPurchase && account?.paymentDay != null
-      ? countPaidInstallments(expense, account.paymentDay)
-      : 0;
+  const isCreditPurchase = expense.paymentDay != null;
+  const installmentProgress =
+    isCreditPurchase && expense.accountId
+      ? countRemainingInstallments(expense.id, expense.accountId, allExpenses, payments)
+      : null;
+  const hasRemainingDebt = !!installmentProgress && installmentProgress.paid < installmentProgress.total;
 
   return (
     <Card className="py-0">
@@ -47,12 +51,12 @@ export function ExpenseCard({ expense }: Props) {
                 {account.name}
               </span>
             )}
-            {isCreditPurchase && expense.installments && (
+            {isCreditPurchase && expense.installments && installmentProgress && (
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                {paidInstallments}/{expense.installments} cuotas pagadas
+                {installmentProgress.paid}/{installmentProgress.total} cuotas pagadas
               </span>
             )}
-            {isCreditPurchase && remainingDebt > 0 && (
+            {isCreditPurchase && hasRemainingDebt && (
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-expense">
                 Pendiente
               </span>

@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useExpensesStore } from "@/store/expenses.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
+import { usePaymentsStore } from "@/store/payments.store";
 import { normalizeForSearch, cn } from "@/lib/utils";
-import { computeBalances, computeAccountDueNow } from "@/features/expenses/balance";
+import { computeBalances } from "@/features/expenses/balance";
 import { ExpenseCard } from "@/features/expenses/components/ExpenseCard";
 import { CreateExpenseDialog } from "@/features/expenses/components/CreateExpenseDialog";
-import { AccountPaymentDialog } from "@/features/accounts/components/AccountPaymentDialog";
+import { UpcomingCardPayments } from "@/features/accounts/components/UpcomingCardPayments";
 import {
     ExpenseFilters,
     ExpenseFiltersState,
@@ -17,42 +18,25 @@ import {
 
 export default function DashboardPage() {
     const { expenses, loadExpenses } = useExpensesStore();
-    const payBilledDebt = useExpensesStore(state => state.payBilledDebt);
-    const { accounts, loadAccounts } = useAccountsStore();
+    const loadAccounts = useAccountsStore(state => state.loadAccounts);
     const { loadSubscriptions, syncDueEntries } = useSubscriptionsStore();
+    const { payments, loadPayments } = usePaymentsStore();
     const [filters, setFilters] = useState<ExpenseFiltersState>(emptyExpenseFilters);
-    const [dismissedAccountIds, setDismissedAccountIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         async function init() {
             await loadExpenses();
             await loadAccounts();
+            await loadPayments();
             await loadSubscriptions();
             await syncDueEntries();
         }
         init();
-    }, [loadExpenses, loadAccounts, loadSubscriptions, syncDueEntries]);
+    }, [loadExpenses, loadAccounts, loadPayments, loadSubscriptions, syncDueEntries]);
 
     const { actualBalance, debt, generalBalance } = useMemo(() => {
-        return computeBalances(expenses, accounts);
-    }, [expenses, accounts]);
-
-    const duePrompt = useMemo(() => {
-        const candidate = accounts
-            .filter(account => !dismissedAccountIds.has(account.id))
-            .map(account => ({ account, dueNow: computeAccountDueNow(account, expenses) }))
-            .find(entry => entry.dueNow > 0);
-        return candidate ?? null;
-    }, [accounts, expenses, dismissedAccountIds]);
-
-    function dismissDueAccount(id: string) {
-        setDismissedAccountIds(prev => new Set(prev).add(id));
-    }
-
-    async function confirmDueAccountPayment(amount: number) {
-        if (!duePrompt) return;
-        await payBilledDebt(duePrompt.account.id, amount, duePrompt.account.paymentDay!);
-    }
+        return computeBalances(expenses, payments);
+    }, [expenses, payments]);
 
     const categories = useMemo(() => {
         return Array.from(new Set(expenses.map(e => e.category).filter(Boolean)));
@@ -135,6 +119,8 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            <UpcomingCardPayments />
+
             <div className="space-y-3">
                 <h2 className="text-lg font-semibold">
                     Registrar movimiento
@@ -166,18 +152,6 @@ export default function DashboardPage() {
                     </p>
                 )}
             </div>
-
-            <AccountPaymentDialog
-                key={duePrompt?.account.id ?? "none"}
-                variant="reminder"
-                account={duePrompt?.account ?? null}
-                amountDue={duePrompt?.dueNow ?? 0}
-                open={!!duePrompt}
-                onOpenChange={open => {
-                    if (!open && duePrompt) dismissDueAccount(duePrompt.account.id);
-                }}
-                onConfirmPayment={confirmDueAccountPayment}
-            />
         </section>
     );
 }

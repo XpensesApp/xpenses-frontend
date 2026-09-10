@@ -5,18 +5,21 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useExpensesStore } from "@/store/expenses.store";
+import { usePaymentsStore } from "@/store/payments.store";
 import { AccountCard } from "@/features/accounts/components/AccountCard";
 import { AccountDialog } from "@/features/accounts/components/AccountDialog";
 
 export default function AccountsPage() {
     const { accounts, loadAccounts } = useAccountsStore();
     const loadExpenses = useExpensesStore(state => state.loadExpenses);
+    const loadPayments = usePaymentsStore(state => state.loadPayments);
     const [createOpen, setCreateOpen] = useState(false);
 
     useEffect(() => {
         loadAccounts();
         loadExpenses();
-    }, [loadAccounts, loadExpenses]);
+        loadPayments();
+    }, [loadAccounts, loadExpenses, loadPayments]);
 
     return (
         <section className="p-6 space-y-4">

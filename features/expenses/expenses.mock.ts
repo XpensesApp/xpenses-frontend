@@ -9,7 +9,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-01",
     type: "expense",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
   {
@@ -20,7 +19,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-01",
     type: "expense",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
   {
@@ -31,7 +29,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-05",
     type: "expense",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
   {
@@ -42,7 +39,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-01",
     type: "income",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
   {
@@ -53,7 +49,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-06",
     type: "income",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
   {
@@ -64,7 +59,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-07",
     type: "expense",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
   {
@@ -75,7 +69,6 @@ export const mockExpenses: Expense[] = [
     date: "2026-02-08",
     type: "income",
     affectsBalance: true,
-    paidAmount: 0,
     pending: false,
   },
 ];

@@ -1,7 +1,4 @@
-function clampDayToMonth(year: number, month: number, day: number): number {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  return Math.min(day, daysInMonth);
-}
+import { clampDayToMonth } from "@/lib/dates";
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -27,13 +24,4 @@ export function mostRecentBillingDate(
 
   if (candidate < startOfDay(createdAt)) return null;
   return candidate;
-}
-
-/** Identifies a billing cycle, e.g. "2026-09". */
-export function billingPeriodKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function toISODate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

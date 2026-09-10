@@ -10,39 +10,54 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAccountsStore } from "@/store/accounts.store";
 import { Account } from "@/features/accounts/accounts.types";
 
+const NO_SOURCE = "none";
+
 type Props = {
-  /** "reminder": the automatic past-due-day prompt, scoped to this cycle's billed amount. "manual": the accounts-section action, scoped to the full outstanding balance. */
-  variant: "reminder" | "manual";
   account: Account | null;
+  /** Amount currently due on this card (this cycle or earlier) — the cap for both a full and a partial payment. */
   amountDue: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirmPayment: (amount: number) => Promise<void>;
+  onConfirmPayment: (amount: number, sourceAccountId: string | undefined) => Promise<void>;
 };
 
 export function AccountPaymentDialog({
-  variant,
   account,
   amountDue,
   open,
   onOpenChange,
   onConfirmPayment,
 }: Props) {
+  const accounts = useAccountsStore(state => state.accounts);
+  const sourceOptions = accounts.filter(a => a.type !== "credit");
+
   const [mode, setMode] = useState<"idle" | "partial">("idle");
   const [partialAmount, setPartialAmount] = useState("");
+  const [sourceAccountId, setSourceAccountId] = useState(
+    () => sourceOptions.find(a => a.isDefault)?.id ?? NO_SOURCE
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const isReminder = variant === "reminder";
 
   async function handleConfirm(amount: number) {
     setSubmitting(true);
     setError(null);
 
     try {
-      await onConfirmPayment(amount);
+      await onConfirmPayment(
+        amount,
+        sourceAccountId === NO_SOURCE ? undefined : sourceAccountId
+      );
       onOpenChange(false);
     } catch {
       setError("No se pudo registrar el pago. Intenta de nuevo.");
@@ -70,33 +85,35 @@ export function AccountPaymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isReminder ? "Recordatorio de pago" : "Pagar cuenta"}</DialogTitle>
+          <DialogTitle>Pagar cuenta</DialogTitle>
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          {isReminder ? (
-            <>
-              Ya pasó el día de pago de{" "}
-              <span className="font-medium text-foreground">{account?.name}</span>
-              . Tienes{" "}
-              <span className="font-medium text-foreground">
-                ${amountDue.toLocaleString()}
-              </span>{" "}
-              vencido este mes (la suma de las cuotas que ya se facturaron). ¿Ya lo
-              pagaste?
-            </>
-          ) : (
-            <>
-              Tienes{" "}
-              <span className="font-medium text-foreground">
-                ${amountDue.toLocaleString()}
-              </span>{" "}
-              de deuda total en{" "}
-              <span className="font-medium text-foreground">{account?.name}</span>{" "}
-              (incluyendo cuotas que aún no se facturan). ¿Cuánto quieres pagar?
-            </>
-          )}
+          Tienes{" "}
+          <span className="font-medium text-foreground">
+            ${amountDue.toLocaleString()}
+          </span>{" "}
+          facturado y sin pagar en{" "}
+          <span className="font-medium text-foreground">{account?.name}</span>.
+          ¿Cuánto quieres pagar?
         </p>
+
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Cuenta de origen</label>
+          <Select value={sourceAccountId} onValueChange={setSourceAccountId}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_SOURCE}>Sin cuenta</SelectItem>
+              {sourceOptions.map(source => (
+                <SelectItem key={source.id} value={source.id}>
+                  {source.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         {mode === "partial" && (
           <div className="space-y-1">
@@ -128,7 +145,7 @@ export function AccountPaymentDialog({
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
-            {isReminder ? "Todavía no" : "Cancelar"}
+            Cancelar
           </Button>
 
           {mode === "partial" ? (
@@ -157,18 +174,14 @@ export function AccountPaymentDialog({
                 onClick={() => setMode("partial")}
                 disabled={submitting}
               >
-                {isReminder ? "Pago parcial" : "Monto personalizado"}
+                Monto personalizado
               </Button>
               <Button
                 type="button"
                 onClick={() => handleConfirm(amountDue)}
                 disabled={submitting}
               >
-                {submitting
-                  ? "Guardando..."
-                  : isReminder
-                    ? "Sí, pago completo"
-                    : "Pagar deuda completa"}
+                {submitting ? "Guardando..." : "Pagar todo lo facturado"}
               </Button>
             </div>
           )}

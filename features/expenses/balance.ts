@@ -1,5 +1,7 @@
 import { Expense } from "./expenses.types";
 import { Account } from "@/features/accounts/accounts.types";
+import { Payment } from "@/features/payments/payments.types";
+import { clampDayToMonth, periodKey } from "@/lib/dates";
 
 function signedAmount(expense: Expense) {
   return expense.type === "income" ? expense.amount : -expense.amount;
@@ -13,35 +15,35 @@ export type InstallmentInfo = {
 };
 
 /**
- * Splits a credit purchase into its monthly installments ("cuotas"). Each
- * installment is billed on the account's payment day: the first one on the
- * next payment day on/after the purchase date, then one per following month.
+ * Splits a credit purchase into its monthly installments ("cuotas"), using
+ * the payment day snapshotted on the purchase itself — never the linked
+ * account's current setting, so editing a card never rewrites past
+ * purchases. Returns an empty schedule for non-credit entries.
  */
-export function getInstallmentSchedule(
-  expense: Expense,
-  paymentDay: number
-): InstallmentInfo[] {
-  const total = Math.max(1, expense.installments ?? 1);
-  const purchaseDate = new Date(expense.date);
+export function getInstallmentSchedule(purchase: Expense): InstallmentInfo[] {
+  if (purchase.paymentDay == null) return [];
+
+  const paymentDay = purchase.paymentDay;
+  const total = Math.max(1, purchase.installments ?? 1);
+  const purchaseDate = new Date(purchase.date);
   const firstMonthOffset = purchaseDate.getDate() <= paymentDay ? 0 : 1;
-  const baseAmount = Math.round(expense.amount / total);
+  const baseAmount = Math.round(purchase.amount / total);
 
   const schedule: InstallmentInfo[] = [];
   let allocated = 0;
 
   for (let i = 0; i < total; i++) {
     const isLast = i === total - 1;
-    const amount = isLast ? expense.amount - allocated : baseAmount;
+    const amount = isLast ? purchase.amount - allocated : baseAmount;
     allocated += amount;
+
+    const year = purchaseDate.getFullYear();
+    const month = purchaseDate.getMonth() + firstMonthOffset + i;
 
     schedule.push({
       index: i + 1,
       total,
-      dueDate: new Date(
-        purchaseDate.getFullYear(),
-        purchaseDate.getMonth() + firstMonthOffset + i,
-        paymentDay
-      ),
+      dueDate: new Date(year, month, clampDayToMonth(year, month, paymentDay)),
       amount,
     });
   }
@@ -49,97 +51,170 @@ export function getInstallmentSchedule(
   return schedule;
 }
 
-/** Total amount already billed (installments due on or before `asOf`). */
-function billedAmount(expense: Expense, paymentDay: number, asOf: Date): number {
-  return getInstallmentSchedule(expense, paymentDay)
-    .filter(installment => installment.dueDate <= asOf)
-    .reduce((sum, installment) => sum + installment.amount, 0);
-}
-
-/** How many installments of a credit purchase have been fully paid off so far. */
-export function countPaidInstallments(expense: Expense, paymentDay: number): number {
-  let remaining = expense.paidAmount;
-  let count = 0;
-
-  for (const installment of getInstallmentSchedule(expense, paymentDay)) {
-    if (remaining + 0.5 < installment.amount) break;
-    remaining -= installment.amount;
-    count++;
-  }
-
-  return count;
-}
-
-/** Total remaining balance owed on a single entry (all installments, billed or not). */
-function entryRemainingDebt(expense: Expense): number {
-  return expense.type === "income" ? -expense.amount : expense.amount - expense.paidAmount;
-}
-
-/** Amount currently billed and still unpaid for a single entry (only past/current-cycle installments). */
-export function computeEntryDueNow(expense: Expense, paymentDay: number, asOf: Date): number {
-  if (expense.type === "income") return -expense.amount;
-  return Math.max(0, billedAmount(expense, paymentDay, asOf) - expense.paidAmount);
-}
-
-/** Amount that can still be paid off a single purchase, across all its installments (billed or not). Income entries aren't payable. */
-export function computeEntryRemaining(expense: Expense): number {
-  if (expense.type !== "expense") return 0;
-  return Math.max(0, expense.amount - expense.paidAmount);
-}
+type LedgerItem = {
+  purchaseId: string;
+  dueDate: Date;
+  amount: number;
+  /** Portion of this installment still unpaid, after consuming the card's payments oldest-due-first. */
+  remaining: number;
+};
 
 /**
- * Applies a payment amount across a set of entries, oldest purchase first,
- * capping how much each entry can absorb via `capFor`. Used to record a
- * single payment made against an account's overall debt — not against any
- * one entry directly — while still knowing how to attribute it internally.
+ * The full obligation ledger for one credit card: every installment across
+ * every purchase on that card, oldest due date first, with the card's total
+ * payments consumed against it in that same order. This is the single
+ * source of truth everything else in this module is derived from — a
+ * payment is never attributed to a specific purchase when it's recorded,
+ * only when this is read.
  */
-export function distributePayment(
-  entries: Expense[],
-  amount: number,
-  capFor: (expense: Expense) => number
-): Expense[] {
-  const eligible = entries
-    .map(expense => ({ expense, cap: capFor(expense) }))
-    .filter(({ cap }) => cap > 0)
-    .sort((a, b) => a.expense.date.localeCompare(b.expense.date));
-
-  let remaining = amount;
-  const updates: Expense[] = [];
-
-  for (const { expense, cap } of eligible) {
-    if (remaining <= 0) break;
-    const applied = Math.min(remaining, cap);
-    remaining -= applied;
-    updates.push({ ...expense, paidAmount: expense.paidAmount + applied });
-  }
-
-  return updates;
-}
-
-/**
- * Splits tracked entries into "actual" (liquid, non-credit) balance and
- * pending credit-card debt. Credit purchases don't reduce the actual
- * balance until they're paid off — until then they accumulate as debt,
- * regardless of whether every installment has been billed yet.
- */
-export function computeBalances(expenses: Expense[], accounts: Account[]) {
-  const creditAccountIds = new Set(
-    accounts.filter(a => a.type === "credit").map(a => a.id)
+export function getCardLedger(
+  cardAccountId: string,
+  expenses: Expense[],
+  payments: Payment[]
+): LedgerItem[] {
+  const purchases = expenses.filter(
+    e => e.accountId === cardAccountId && e.paymentDay != null && e.affectsBalance && !e.pending
   );
 
+  const flattened = purchases.flatMap(purchase =>
+    getInstallmentSchedule(purchase).map(installment => ({
+      purchaseId: purchase.id,
+      purchaseDate: purchase.date,
+      dueDate: installment.dueDate,
+      amount: installment.amount,
+    }))
+  );
+
+  flattened.sort((a, b) => {
+    const dueDiff = a.dueDate.getTime() - b.dueDate.getTime();
+    return dueDiff !== 0 ? dueDiff : a.purchaseDate.localeCompare(b.purchaseDate);
+  });
+
+  let pool = payments
+    .filter(p => p.cardAccountId === cardAccountId)
+    .reduce((total, p) => total + p.amount, 0);
+
+  return flattened.map(({ purchaseId, dueDate, amount }) => {
+    const consumed = Math.min(pool, amount);
+    pool -= consumed;
+    return { purchaseId, dueDate, amount, remaining: amount - consumed };
+  });
+}
+
+/** Total remaining balance on a credit card: every unpaid installment, billed or not. */
+export function computeCardDebt(
+  cardAccountId: string,
+  expenses: Expense[],
+  payments: Payment[]
+): number {
+  return getCardLedger(cardAccountId, expenses, payments).reduce(
+    (total, item) => total + item.remaining,
+    0
+  );
+}
+
+/**
+ * The next thing a card owner needs to know about: what's billed and unpaid
+ * right now, or — if nothing is due yet — a preview of the single soonest
+ * upcoming period. This is a derived projection, not stored anywhere; the
+ * next call after recording a payment simply reflects the smaller balance.
+ * `isDue` tells the caller whether this is payable today (`dueDate <= asOf`)
+ * or just a preview of what's coming — we don't support paying ahead of
+ * schedule, so a preview should be shown without a working "pay" action.
+ * Returns null only once every installment on the card is fully paid off.
+ */
+export function computeNextCardObligation(
+  cardAccountId: string,
+  expenses: Expense[],
+  payments: Payment[],
+  asOf: Date = new Date()
+): { amount: number; dueDate: Date; isDue: boolean } | null {
+  const outstanding = getCardLedger(cardAccountId, expenses, payments).filter(
+    item => item.remaining > 0
+  );
+  if (outstanding.length === 0) return null;
+
+  const dueItems = outstanding.filter(item => item.dueDate <= asOf);
+  const relevant = dueItems.length > 0 ? dueItems : upcomingPeriod(outstanding);
+
+  return {
+    amount: relevant.reduce((total, item) => total + item.remaining, 0),
+    dueDate: relevant.reduce(
+      (earliest, item) => (item.dueDate < earliest ? item.dueDate : earliest),
+      relevant[0].dueDate
+    ),
+    isDue: dueItems.length > 0,
+  };
+}
+
+/** All items sharing the same due period as the soonest one in `sortedByDueDate` (already oldest-first, per `getCardLedger`). */
+function upcomingPeriod(sortedByDueDate: LedgerItem[]): LedgerItem[] {
+  const soonest = periodKey(sortedByDueDate[0].dueDate);
+  return sortedByDueDate.filter(item => periodKey(item.dueDate) === soonest);
+}
+
+/** Remaining balance grouped by due period ("2026-09"), sorted chronologically — includes the current period and every future one with a balance left. */
+export function computeUpcomingObligations(
+  cardAccountId: string,
+  expenses: Expense[],
+  payments: Payment[]
+): { period: string; amount: number }[] {
+  const byPeriod = new Map<string, number>();
+
+  for (const item of getCardLedger(cardAccountId, expenses, payments)) {
+    if (item.remaining <= 0) continue;
+    const key = periodKey(item.dueDate);
+    byPeriod.set(key, (byPeriod.get(key) ?? 0) + item.remaining);
+  }
+
+  return [...byPeriod.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, amount]) => ({ period, amount }));
+}
+
+/** How many of a purchase's installments are fully paid off, out of how many total. */
+export function countRemainingInstallments(
+  purchaseId: string,
+  cardAccountId: string,
+  expenses: Expense[],
+  payments: Payment[]
+): { paid: number; total: number } {
+  const items = getCardLedger(cardAccountId, expenses, payments).filter(
+    item => item.purchaseId === purchaseId
+  );
+
+  return {
+    paid: items.filter(item => item.remaining === 0).length,
+    total: items.length,
+  };
+}
+
+/**
+ * Splits tracked entries into "actual" (liquid) balance and outstanding
+ * credit-card debt. Credit purchases don't reduce actual balance until
+ * they're paid off; paying a card does, via its recorded payments.
+ */
+export function computeBalances(expenses: Expense[], payments: Payment[]) {
   let actualBalance = 0;
-  let debt = 0;
 
   for (const expense of expenses) {
-    if (!expense.affectsBalance || expense.pending) continue;
+    if (!expense.affectsBalance || expense.pending || expense.paymentDay != null) continue;
+    actualBalance += signedAmount(expense);
+  }
 
-    const isCredit = !!expense.accountId && creditAccountIds.has(expense.accountId);
+  for (const payment of payments) {
+    actualBalance -= payment.amount;
+  }
 
-    if (isCredit) {
-      debt += entryRemainingDebt(expense);
-    } else {
-      actualBalance += signedAmount(expense);
-    }
+  const cardAccountIds = new Set(
+    expenses
+      .filter((e): e is Expense & { accountId: string } => e.paymentDay != null && !!e.accountId)
+      .map(e => e.accountId)
+  );
+
+  let debt = 0;
+  for (const cardAccountId of cardAccountIds) {
+    debt += computeCardDebt(cardAccountId, expenses, payments);
   }
 
   return {
@@ -149,30 +224,23 @@ export function computeBalances(expenses: Expense[], accounts: Account[]) {
   };
 }
 
-/** Total remaining balance for a single account: all unpaid installments (billed or not) for credit, net movement otherwise. */
-export function computeAccountBalance(account: Account, expenses: Expense[]) {
-  const linked = expenses.filter(
-    e => e.affectsBalance && !e.pending && e.accountId === account.id
-  );
-
-  if (account.type === "credit") {
-    return linked.reduce((total, e) => total + entryRemainingDebt(e), 0);
-  }
-
-  return linked.reduce((total, e) => total + signedAmount(e), 0);
-}
-
-/** Amount currently billed and unpaid for a credit account (the installments due this cycle or earlier). */
-export function computeAccountDueNow(
+/** Balance for a single account: card debt for credit accounts, net cash movement (spending minus payments made from it) otherwise. */
+export function computeAccountBalance(
   account: Account,
   expenses: Expense[],
-  asOf: Date = new Date()
-) {
-  if (account.type !== "credit" || account.paymentDay == null) return 0;
+  payments: Payment[]
+): number {
+  if (account.type === "credit") {
+    return computeCardDebt(account.id, expenses, payments);
+  }
 
-  const total = expenses
+  const spent = expenses
     .filter(e => e.affectsBalance && !e.pending && e.accountId === account.id)
-    .reduce((sum, e) => sum + computeEntryDueNow(e, account.paymentDay!, asOf), 0);
+    .reduce((total, e) => total + signedAmount(e), 0);
 
-  return Math.max(0, total);
+  const paidOut = payments
+    .filter(p => p.sourceAccountId === account.id)
+    .reduce((total, p) => total + p.amount, 0);
+
+  return spent - paidOut;
 }

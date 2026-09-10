@@ -11,10 +11,16 @@ export type Expense = {
   affectsBalance: boolean;
   /** Account this entry is charged to. Undefined means untracked (no account). */
   accountId?: string;
-  /** Number of installments ("cuotas") this entry is split into. Only relevant for credit accounts. */
+  /** Number of installments ("cuotas") this entry is split into. Only relevant for credit purchases. */
   installments?: number;
-  /** Amount already paid off this entry. Only relevant for expenses on credit accounts — supports partial payments. */
-  paidAmount: number;
+  /**
+   * The credit account's payment day, snapshotted at the moment of purchase.
+   * Its presence — not the currently-linked account's type — is the permanent
+   * signal that this entry is a credit purchase. Never re-derived from the
+   * live account, so editing or deleting a card never rewrites the schedule
+   * of past purchases.
+   */
+  paymentDay?: number;
   /** True for an entry auto-generated from a subscription that hasn't been paid/confirmed yet. */
   pending: boolean;
   /** Links this entry back to the subscription that generated it, if any. */

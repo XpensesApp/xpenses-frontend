@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { subscriptionsService } from "@/features/subscriptions/subscriptions.service";
-import { mostRecentBillingDate, billingPeriodKey, toISODate } from "@/features/subscriptions/schedule";
+import { mostRecentBillingDate } from "@/features/subscriptions/schedule";
+import { toISODate, periodKey } from "@/lib/dates";
 import { useExpensesStore } from "@/store/expenses.store";
 
 type SubscriptionsState = {
@@ -76,7 +77,7 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
       );
       if (!dueDate) continue;
 
-      const period = billingPeriodKey(dueDate);
+      const period = periodKey(dueDate);
       const alreadyExists = expenses.some(
         e => e.subscriptionId === subscription.id && e.billingPeriod === period
       );
@@ -90,7 +91,6 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
         date: toISODate(dueDate),
         type: subscription.type,
         affectsBalance: subscription.affectsBalance,
-        paidAmount: 0,
         pending: true,
         subscriptionId: subscription.id,
         billingPeriod: period,
