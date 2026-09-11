@@ -1,0 +1,22 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        # Amplify Console env vars are only available to this build container,
+        # not to the deployed SSR Lambda at request time — writing them into
+        # .env.production makes Next.js's own runtime pick them up on cold
+        # start regardless of Amplify's Lambda env var wiring.
+        - env | grep -E '^(AUTH_|COGNITO_)' >> .env.production
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
