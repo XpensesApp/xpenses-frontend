@@ -7,6 +7,14 @@ export const {
   signIn,
   signOut,
 } = NextAuth({
+  // Auth.js normally auto-derives this from AUTH_URL being present in
+  // process.env (or from platform-specific env vars like VERCEL/CF_PAGES),
+  // but AWS Amplify's SSR compute doesn't reliably expose Console-configured
+  // environment variables to the Lambda at request time the way it does at
+  // build time — trustHost ended up false there even with AUTH_URL set,
+  // throwing "UntrustedHost". Setting it explicitly removes the dependency
+  // on that auto-detection working correctly on any given host.
+  trustHost: true,
   providers: [
     Cognito({
       // Cognito re-mints its own ID token after federating through Google and
