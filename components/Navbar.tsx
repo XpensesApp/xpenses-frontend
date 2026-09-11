@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { CircleUserIcon, LogOutIcon, MenuIcon, SettingsIcon, UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ const navItems = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const userName = session?.user?.name ?? session?.user?.email ?? null;
 
   return (
     <nav className="flex h-20 items-center gap-8 border-b bg-card px-4 shadow-sm sm:px-8">
@@ -41,6 +44,12 @@ export function Navbar() {
       <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
         <ThemeToggle />
 
+        {userName && (
+          <span className="hidden text-sm text-muted-foreground sm:inline">
+            {userName}
+          </span>
+        )}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
@@ -48,7 +57,7 @@ export function Navbar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Mi cuenta (próximamente)</DropdownMenuLabel>
+            <DropdownMenuLabel>{userName ?? "Mi cuenta"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled>
               <UserIcon />
@@ -59,9 +68,12 @@ export function Navbar() {
               Configuración
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>
-              <LogOutIcon />
-              Cerrar sesión
+            <DropdownMenuItem asChild>
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- redirect-only route handler, not a page; next/link's soft-navigation attempt fails on it and falls back to a reload anyway */}
+              <a href="/api/auth/cognito-logout">
+                <LogOutIcon />
+                Cerrar sesión
+              </a>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -1,4 +1,6 @@
 import "./globals.css";
+import { SessionProvider } from "next-auth/react";
+import { auth } from "@/auth";
 import { Navbar } from "@/components/Navbar";
 
 export const metadata = {
@@ -6,11 +8,13 @@ export const metadata = {
   description: "Gestión de gastos personales",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
@@ -21,8 +25,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <Navbar />
-        {children}
+        <SessionProvider session={session}>
+          <Navbar />
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );

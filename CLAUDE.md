@@ -285,29 +285,21 @@ The exact budgeting model is not yet defined.
 
 ## 10. Authentication and Backend
 
-Authentication is a future requirement.
+**Project decision**: AWS Cognito is the authentication provider, with Google as a federated identity provider on the Cognito User Pool (the app never talks to Google directly — only to Cognito's OIDC endpoints). Integration is via Auth.js (`next-auth@5.0.0-beta.32`), using its built-in Cognito provider with zero-config env-var inference (`AUTH_COGNITO_ID` / `AUTH_COGNITO_SECRET` / `AUTH_COGNITO_ISSUER`, per the `AUTH_<PROVIDER>_<FIELD>` convention `@auth/core` reads automatically). JWT session strategy — no database adapter, matching "no backend yet".
 
-The current idea is:
+**Current state (wired up, not yet end-to-end tested against real AWS values):**
 
-```text
-Google Login
-     ↓
-Authentication provider
-     ↓
-JWT
-     ↓
-Backend API
-     ↓
-Validate authenticated request
-```
+* `auth.ts` (repo root) — `NextAuth({ providers: [Cognito], callbacks: { authorized } })`, exporting `handlers`, `auth`, `signIn`, `signOut`.
+* `app/api/auth/[...nextauth]/route.ts` — re-exports the handlers.
+* `proxy.ts` (repo root) — Next.js 16 renamed the `middleware.ts` convention to `proxy.ts` (exporting `proxy` instead of `middleware`; runs on Node.js, not Edge). Protects every route except `/api/auth/*` via `callbacks.authorized` returning `!!auth`; unauthenticated requests are redirected to Auth.js's default `/api/auth/signin` page (no custom login page yet, by deliberate choice).
+* `app/api/auth/cognito-logout/route.ts` — `signOut()` alone only clears the local session cookie, not the Cognito Hosted UI (or underlying Google) session, so this route calls `signOut({ redirect: false })` then redirects to Cognito's hosted `/logout` endpoint for a real full logout. `COGNITO_DOMAIN` is only ever read here, server-side.
+* `app/layout.tsx` — root layout is `async`, calls `auth()` server-side, and passes the session into `<SessionProvider>` (from `next-auth/react`) wrapping `<Navbar />`/`{children}`, avoiding a client-side session fetch flicker.
+* Sign-in flow lands on Cognito's Hosted UI (lists Google as an option) rather than skipping straight to Google — a deliberate choice, reversible later via an `identity_provider` param on the provider config.
+* `app/login/route.ts` — a Route Handler (not a page) set as `auth.ts`'s `pages.signIn`, so unauthenticated requests land here instead of Auth.js's own generic multi-provider picker page. It calls the server-side `signIn("cognito", { redirectTo })`, which redirects straight into Cognito's Hosted UI — needs to be a Route Handler, not a Server Component, because `signIn()` writes an OAuth state/PKCE cookie before redirecting, and only Route Handlers/Server Actions can mutate cookies. `GET /api/auth/signin/cognito` (the URL `/api/auth/providers` advertises) only works as a CSRF-protected POST target for Auth.js's own picker page form — a plain GET there throws `UnknownAction`, which is why this couldn't be a simple redirect target in `proxy.ts` instead.
 
-AWS Cognito is currently being considered as the authentication provider.
+**Not yet done**: wiring real sign-in/sign-out UI into `Navbar`'s existing disabled "Mi cuenta" placeholder items, and a custom-styled `/login` page (both explicitly deferred, not forgotten).
 
-This is a future architectural direction, not an implemented feature.
-
-Do not introduce authentication infrastructure unless explicitly requested.
-
-Do not assume Cognito is permanently selected until the decision is made.
+Do not re-introduce a `middleware.ts` file — Next.js 16 deprecated it in favor of `proxy.ts`.
 
 ---
 
