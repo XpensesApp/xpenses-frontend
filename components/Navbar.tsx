@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard" },
+  { label: "Mis movimientos", href: "/" },
   { label: "Cuentas", href: "/accounts" },
   { label: "Suscripciones", href: "/subscriptions" },
 ];

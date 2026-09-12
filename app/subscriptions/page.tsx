@@ -15,8 +15,7 @@ export default function SubscriptionsPage() {
 
     useEffect(() => {
         async function init() {
-            await loadExpenses();
-            await loadSubscriptions();
+            await Promise.all([loadExpenses(), loadSubscriptions()]);
             await syncDueEntries();
         }
         init();
