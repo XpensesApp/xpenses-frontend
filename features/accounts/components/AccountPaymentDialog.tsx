@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { useAccountsStore } from "@/store/accounts.store";
 import { Account } from "@/features/accounts/accounts.types";
+import { nowLocalDateTime } from "@/lib/dates";
 
 const NO_SOURCE = "none";
 
@@ -28,7 +29,11 @@ type Props = {
   amountDue: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirmPayment: (amount: number, sourceAccountId: string | undefined) => Promise<void>;
+  onConfirmPayment: (
+    amount: number,
+    sourceAccountId: string | undefined,
+    date: string
+  ) => Promise<void>;
 };
 
 export function AccountPaymentDialog({
@@ -43,6 +48,7 @@ export function AccountPaymentDialog({
 
   const [mode, setMode] = useState<"idle" | "partial">("idle");
   const [partialAmount, setPartialAmount] = useState("");
+  const [date, setDate] = useState(nowLocalDateTime);
   const [sourceAccountId, setSourceAccountId] = useState(
     () => sourceOptions.find(a => a.isDefault)?.id ?? NO_SOURCE
   );
@@ -56,7 +62,8 @@ export function AccountPaymentDialog({
     try {
       await onConfirmPayment(
         amount,
-        sourceAccountId === NO_SOURCE ? undefined : sourceAccountId
+        sourceAccountId === NO_SOURCE ? undefined : sourceAccountId,
+        date
       );
       onOpenChange(false);
     } catch {
@@ -113,6 +120,16 @@ export function AccountPaymentDialog({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Fecha del pago</label>
+          <Input
+            type="datetime-local"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="[&::-webkit-calendar-picker-indicator]:size-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[&::-webkit-calendar-picker-indicator]:invert"
+          />
         </div>
 
         {mode === "partial" && (

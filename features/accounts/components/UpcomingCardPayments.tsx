@@ -139,12 +139,12 @@ function CardPaymentRow({
           amountDue={obligation.amount}
           open={payOpen}
           onOpenChange={setPayOpen}
-          onConfirmPayment={(amount, sourceAccountId) =>
+          onConfirmPayment={(amount, sourceAccountId, date) =>
             addPayment({
               id: crypto.randomUUID(),
               cardAccountId: account.id,
               amount,
-              date: new Date().toISOString(),
+              date,
               sourceAccountId,
             })
           }

@@ -9,6 +9,7 @@ import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { useExpensesStore } from "@/store/expenses.store";
 import { usePaymentsStore } from "@/store/payments.store";
 import { countRemainingInstallments } from "@/features/expenses/balance";
+import { formatDateTime } from "@/lib/dates";
 import { Expense } from "../expenses.types";
 import { ExpenseDialog } from "./ExpenseDialog";
 
@@ -95,7 +96,7 @@ export function ExpenseCard({ expense }: Props) {
             )}
           </div>
           <span className="text-xs text-muted-foreground">
-            {formatExpenseDate(expense.date)}
+            {formatDateTime(expense.date)}
           </span>
         </div>
 
@@ -133,22 +134,4 @@ export function ExpenseCard({ expense }: Props) {
       />
     </Card>
   );
-}
-
-function formatExpenseDate(date: string) {
-  if (date.length > 10) {
-    const parsed = new Date(date);
-    if (Number.isNaN(parsed.getTime())) return date;
-    return parsed.toLocaleString(undefined, {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  const [year, month, day] = date.split("-").map(Number);
-  if (!year || !month || !day) return date;
-  return new Date(year, month - 1, day).toLocaleDateString();
 }

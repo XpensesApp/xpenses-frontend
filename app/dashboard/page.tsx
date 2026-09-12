@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SlidersHorizontalIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useExpensesStore } from "@/store/expenses.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
@@ -9,6 +11,7 @@ import { normalizeForSearch, cn } from "@/lib/utils";
 import { computeBalances } from "@/features/expenses/balance";
 import { ExpenseCard } from "@/features/expenses/components/ExpenseCard";
 import { CreateExpenseDialog } from "@/features/expenses/components/CreateExpenseDialog";
+import { PaymentCard } from "@/features/payments/components/PaymentCard";
 import { UpcomingCardPayments } from "@/features/accounts/components/UpcomingCardPayments";
 import {
     ExpenseFilters,
@@ -18,10 +21,13 @@ import {
 
 export default function DashboardPage() {
     const { expenses, loadExpenses } = useExpensesStore();
-    const loadAccounts = useAccountsStore(state => state.loadAccounts);
+    const { accounts, loadAccounts } = useAccountsStore();
     const { loadSubscriptions, syncDueEntries } = useSubscriptionsStore();
     const { payments, loadPayments } = usePaymentsStore();
     const [filters, setFilters] = useState<ExpenseFiltersState>(emptyExpenseFilters);
+    const [showFilters, setShowFilters] = useState(false);
+    const hasActiveFilters =
+        filters.search !== "" || filters.category !== "" || filters.account !== "";
 
     useEffect(() => {
         async function init() {
@@ -42,22 +48,62 @@ export default function DashboardPage() {
         return Array.from(new Set(expenses.flatMap(e => e.categories)));
     }, [expenses]);
 
-    const filteredExpenses = useMemo(() => {
+    // Credit-card payments are movements too (a real cash outflow), shown
+    // alongside expenses in the same list — but they have no title/category
+    // of their own, so search matches a synthetic "pago <card>" label and a
+    // category filter always excludes them, same as an uncategorized expense.
+    const movements = useMemo(() => {
         const search = normalizeForSearch(filters.search.trim());
 
-        return expenses.filter(expense => {
+        const filteredExpenses = expenses.filter(expense => {
             if (search && !normalizeForSearch(expense.title).includes(search)) {
                 return false;
             }
             if (filters.category && !expense.categories.includes(filters.category)) {
                 return false;
             }
+            if (filters.account && expense.accountId !== filters.account) {
+                return false;
+            }
             return true;
         });
-    }, [expenses, filters]);
 
-    const sortedExpenses = useMemo(() => {
-        const list = [...filteredExpenses];
+        const filteredPayments = payments.filter(payment => {
+            if (filters.category) return false;
+            if (
+                filters.account &&
+                payment.cardAccountId !== filters.account &&
+                payment.sourceAccountId !== filters.account
+            ) {
+                return false;
+            }
+            if (search) {
+                const cardName = accounts.find(a => a.id === payment.cardAccountId)?.name ?? "";
+                if (!normalizeForSearch(`pago ${cardName}`).includes(search)) return false;
+            }
+            return true;
+        });
+
+        return [
+            ...filteredExpenses.map(expense => ({
+                kind: "expense" as const,
+                id: expense.id,
+                date: expense.date,
+                amount: expense.amount,
+                expense,
+            })),
+            ...filteredPayments.map(payment => ({
+                kind: "payment" as const,
+                id: payment.id,
+                date: payment.date,
+                amount: payment.amount,
+                payment,
+            })),
+        ];
+    }, [expenses, payments, accounts, filters]);
+
+    const sortedMovements = useMemo(() => {
+        const list = [...movements];
 
         switch (filters.sort) {
             case "date-asc":
@@ -71,7 +117,7 @@ export default function DashboardPage() {
             default:
                 return list;
         }
-    }, [filteredExpenses, filters.sort]);
+    }, [movements, filters.sort]);
 
     return (
         <section className="p-6 space-y-8">
@@ -130,23 +176,41 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-4 border-t pt-6">
-                <h2 className="text-lg font-semibold">
-                    Tus movimientos
-                </h2>
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold">
+                        Tus movimientos
+                    </h2>
 
-                <ExpenseFilters
-                    filters={filters}
-                    onFiltersChange={setFilters}
-                    categories={categories}
-                />
+                    <Button
+                        variant={hasActiveFilters ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setShowFilters(show => !show)}
+                    >
+                        <SlidersHorizontalIcon />
+                        Filtros
+                    </Button>
+                </div>
+
+                {showFilters && (
+                    <ExpenseFilters
+                        filters={filters}
+                        onFiltersChange={setFilters}
+                        categories={categories}
+                        accounts={accounts}
+                    />
+                )}
 
                 <ul className="space-y-2">
-                    {sortedExpenses.map(expense => (
-                        <ExpenseCard key={expense.id} expense={expense} />
-                    ))}
+                    {sortedMovements.map(movement =>
+                        movement.kind === "expense" ? (
+                            <ExpenseCard key={`expense-${movement.id}`} expense={movement.expense} />
+                        ) : (
+                            <PaymentCard key={`payment-${movement.id}`} payment={movement.payment} />
+                        )
+                    )}
                 </ul>
 
-                {sortedExpenses.length === 0 && (
+                {sortedMovements.length === 0 && (
                     <p className="text-sm text-muted-foreground">
                         No se encontraron movimientos con estos filtros.
                     </p>

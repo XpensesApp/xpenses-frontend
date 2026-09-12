@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Account } from "@/features/accounts/accounts.types";
 
 export type ExpenseSortOption =
   | "date-asc"
@@ -19,12 +20,14 @@ export type ExpenseSortOption =
 export type ExpenseFiltersState = {
   search: string;
   category: string;
+  account: string;
   sort: ExpenseSortOption;
 };
 
 export const emptyExpenseFilters: ExpenseFiltersState = {
   search: "",
   category: "",
+  account: "",
   sort: "date-desc",
 };
 
@@ -39,9 +42,10 @@ type Props = {
   filters: ExpenseFiltersState;
   onFiltersChange: (filters: ExpenseFiltersState) => void;
   categories: string[];
+  accounts: Account[];
 };
 
-export function ExpenseFilters({ filters, onFiltersChange, categories }: Props) {
+export function ExpenseFilters({ filters, onFiltersChange, categories, accounts }: Props) {
   function update<K extends keyof ExpenseFiltersState>(
     key: K,
     value: ExpenseFiltersState[K]
@@ -76,6 +80,28 @@ export function ExpenseFilters({ filters, onFiltersChange, categories }: Props) 
             {categories.map(category => (
               <SelectItem key={category} value={category}>
                 {category}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="w-40 space-y-1">
+        <label className="text-sm font-medium">Cuenta</label>
+        <Select
+          value={filters.account === "" ? "all" : filters.account}
+          onValueChange={value =>
+            update("account", value === "all" ? "" : value)
+          }
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Todas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas</SelectItem>
+            {accounts.map(account => (
+              <SelectItem key={account.id} value={account.id}>
+                {account.name}
               </SelectItem>
             ))}
           </SelectContent>

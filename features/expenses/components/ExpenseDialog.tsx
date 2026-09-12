@@ -21,18 +21,9 @@ import {
 import { useExpensesStore } from "@/store/expenses.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { Expense, ExpenseType } from "@/features/expenses/expenses.types";
+import { nowLocalDateTime, toDateTimeLocalValue } from "@/lib/dates";
 
 const NO_ACCOUNT = "none";
-
-function nowLocalDateTime() {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
-}
-
-function toDateTimeLocalValue(date: string) {
-  return date.length === 10 ? `${date}T00:00` : date.slice(0, 16);
-}
 
 type CreateProps = {
   mode: "create";
