@@ -6,13 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAccountsStore } from "@/store/accounts.store";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 import { usePaymentsStore } from "@/store/payments.store";
 import {
   computeAccountBalance,
   computeNextCardObligation,
   computeUpcomingObligations,
-} from "@/features/expenses/balance";
+} from "@/features/transactions/balance";
 import { periodKey } from "@/lib/dates";
 import { Account } from "../accounts.types";
 import { AccountDialog, accountTypeLabels } from "./AccountDialog";
@@ -36,22 +36,22 @@ type Props = {
 export function AccountCard({ account }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const expenses = useExpensesStore(state => state.expenses);
+  const transactions = useTransactionsStore(state => state.transactions);
   const payments = usePaymentsStore(state => state.payments);
   const setDefaultAccount = useAccountsStore(state => state.setDefaultAccount);
   const addPayment = usePaymentsStore(state => state.addPayment);
 
-  const balance = computeAccountBalance(account, expenses, payments);
+  const balance = computeAccountBalance(account, transactions, payments);
   const isDebt = account.type === "credit";
   const isNegative = isDebt ? balance > 0 : balance < 0;
 
   const nextObligation = isDebt
-    ? computeNextCardObligation(account.id, expenses, payments)
+    ? computeNextCardObligation(account.id, transactions, payments)
     : null;
   const canPay = !!nextObligation?.isDue;
 
   const upcoming = isDebt && nextObligation
-    ? computeUpcomingObligations(account.id, expenses, payments)
+    ? computeUpcomingObligations(account.id, transactions, payments)
         .filter(o => o.period > periodKey(nextObligation.dueDate))
         .slice(0, 3)
     : [];

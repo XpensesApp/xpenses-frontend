@@ -3,7 +3,7 @@ import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { subscriptionsService } from "@/features/subscriptions/subscriptions.service";
 import { mostRecentBillingDate } from "@/features/subscriptions/schedule";
 import { toISODate, periodKey } from "@/lib/dates";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 
 type SubscriptionsState = {
   subscriptions: Subscription[];
@@ -64,7 +64,7 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
     const today = new Date();
     const todayISO = toISODate(today);
     const subscriptions = get().subscriptions;
-    const { expenses, addExpense } = useExpensesStore.getState();
+    const { transactions, addTransaction } = useTransactionsStore.getState();
 
     for (const subscription of subscriptions) {
       if (subscription.status !== "active") continue;
@@ -78,12 +78,12 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
       if (!dueDate) continue;
 
       const period = periodKey(dueDate);
-      const alreadyExists = expenses.some(
-        e => e.subscriptionId === subscription.id && e.billingPeriod === period
+      const alreadyExists = transactions.some(
+        t => t.subscriptionId === subscription.id && t.billingPeriod === period
       );
       if (alreadyExists) continue;
 
-      await addExpense({
+      await addTransaction({
         id: crypto.randomUUID(),
         title: subscription.title,
         amount: subscription.amount ?? 0,

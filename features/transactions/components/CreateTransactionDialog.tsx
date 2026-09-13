@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ExpenseDialog } from "@/features/expenses/components/ExpenseDialog";
+import { TransactionDialog } from "@/features/transactions/components/TransactionDialog";
 
-export function CreateExpenseDialog() {
+export function CreateTransactionDialog() {
   const [quickName, setQuickName] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -29,7 +29,7 @@ export function CreateExpenseDialog() {
         Registrar
       </Button>
 
-      <ExpenseDialog
+      <TransactionDialog
         mode="create"
         initialTitle={quickName}
         open={open}

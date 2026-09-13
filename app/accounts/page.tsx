@@ -4,29 +4,29 @@ import { useEffect, useMemo, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccountsStore } from "@/store/accounts.store";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 import { usePaymentsStore } from "@/store/payments.store";
 import { untrackedAccount } from "@/features/accounts/accounts.types";
-import { computeAccountBalance } from "@/features/expenses/balance";
+import { computeAccountBalance } from "@/features/transactions/balance";
 import { AccountCard } from "@/features/accounts/components/AccountCard";
 import { AccountDialog } from "@/features/accounts/components/AccountDialog";
 
 export default function AccountsPage() {
     const { accounts, loadAccounts } = useAccountsStore();
-    const { expenses, loadExpenses } = useExpensesStore();
+    const { transactions, loadTransactions } = useTransactionsStore();
     const { payments, loadPayments } = usePaymentsStore();
     const [createOpen, setCreateOpen] = useState(false);
 
     useEffect(() => {
         loadAccounts();
-        loadExpenses();
+        loadTransactions();
         loadPayments();
-    }, [loadAccounts, loadExpenses, loadPayments]);
+    }, [loadAccounts, loadTransactions, loadPayments]);
 
     // Hidden when $0 so it doesn't show up as a confusing empty account by default.
     const hasUntrackedBalance = useMemo(
-        () => computeAccountBalance(untrackedAccount, expenses, payments) !== 0,
-        [expenses, payments]
+        () => computeAccountBalance(untrackedAccount, transactions, payments) !== 0,
+        [transactions, payments]
     );
 
     const displayedAccounts = hasUntrackedBalance

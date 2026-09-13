@@ -11,27 +11,27 @@ import {
 } from "@/components/ui/select";
 import { Account } from "@/features/accounts/accounts.types";
 
-export type ExpenseSortOption =
+export type TransactionSortOption =
   | "date-asc"
   | "date-desc"
   | "price-asc"
   | "price-desc";
 
-export type ExpenseFiltersState = {
+export type TransactionFiltersState = {
   search: string;
   category: string;
   account: string;
-  sort: ExpenseSortOption;
+  sort: TransactionSortOption;
 };
 
-export const emptyExpenseFilters: ExpenseFiltersState = {
+export const emptyTransactionFilters: TransactionFiltersState = {
   search: "",
   category: "",
   account: "",
   sort: "date-desc",
 };
 
-const sortOptions: { value: ExpenseSortOption; label: string }[] = [
+const sortOptions: { value: TransactionSortOption; label: string }[] = [
   { value: "date-desc", label: "Fecha (más reciente primero)" },
   { value: "date-asc", label: "Fecha (más antigua primero)" },
   { value: "price-desc", label: "Precio (mayor a menor)" },
@@ -39,16 +39,16 @@ const sortOptions: { value: ExpenseSortOption; label: string }[] = [
 ];
 
 type Props = {
-  filters: ExpenseFiltersState;
-  onFiltersChange: (filters: ExpenseFiltersState) => void;
+  filters: TransactionFiltersState;
+  onFiltersChange: (filters: TransactionFiltersState) => void;
   categories: string[];
   accounts: Account[];
 };
 
-export function ExpenseFilters({ filters, onFiltersChange, categories, accounts }: Props) {
-  function update<K extends keyof ExpenseFiltersState>(
+export function TransactionFilters({ filters, onFiltersChange, categories, accounts }: Props) {
+  function update<K extends keyof TransactionFiltersState>(
     key: K,
-    value: ExpenseFiltersState[K]
+    value: TransactionFiltersState[K]
   ) {
     onFiltersChange({ ...filters, [key]: value });
   }
@@ -112,7 +112,7 @@ export function ExpenseFilters({ filters, onFiltersChange, categories, accounts 
         <label className="text-sm font-medium">Ordenar por</label>
         <Select
           value={filters.sort}
-          onValueChange={value => update("sort", value as ExpenseSortOption)}
+          onValueChange={value => update("sort", value as TransactionSortOption)}
         >
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -130,7 +130,7 @@ export function ExpenseFilters({ filters, onFiltersChange, categories, accounts 
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => onFiltersChange(emptyExpenseFilters)}
+        onClick={() => onFiltersChange(emptyTransactionFilters)}
       >
         Limpiar filtros
       </Button>

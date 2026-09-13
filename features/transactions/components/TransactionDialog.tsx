@@ -18,9 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
-import { Expense, ExpenseType } from "@/features/expenses/expenses.types";
+import { Transaction, TransactionType } from "@/features/transactions/transactions.types";
 import { nowLocalDateTime, toDateTimeLocalValue } from "@/lib/dates";
 
 const NO_ACCOUNT = "none";
@@ -32,7 +32,7 @@ type CreateProps = {
 
 type EditProps = {
   mode: "edit";
-  expense: Expense;
+  transaction: Transaction;
 };
 
 type Props = (CreateProps | EditProps) & {
@@ -41,15 +41,15 @@ type Props = (CreateProps | EditProps) & {
   onSaved?: () => void;
 };
 
-export function ExpenseDialog(props: Props) {
+export function TransactionDialog(props: Props) {
   const { open, onOpenChange, onSaved } = props;
 
-  const addExpense = useExpensesStore(state => state.addExpense);
-  const updateExpense = useExpensesStore(state => state.updateExpense);
-  const deleteExpense = useExpensesStore(state => state.deleteExpense);
+  const addTransaction = useTransactionsStore(state => state.addTransaction);
+  const updateTransaction = useTransactionsStore(state => state.updateTransaction);
+  const deleteTransaction = useTransactionsStore(state => state.deleteTransaction);
   const accounts = useAccountsStore(state => state.accounts);
 
-  const [type, setType] = useState<ExpenseType>("expense");
+  const [type, setType] = useState<TransactionType>("expense");
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
@@ -69,7 +69,7 @@ export function ExpenseDialog(props: Props) {
 
   const selectedAccount = accounts.find(a => a.id === accountId);
   const isCreditSelected = selectedAccount?.type === "credit";
-  const isPaying = props.mode === "edit" && props.expense.pending;
+  const isPaying = props.mode === "edit" && props.transaction.pending;
   const installmentsApply = isCreditSelected && type === "expense";
 
   function addCategory(value: string) {
@@ -87,21 +87,21 @@ export function ExpenseDialog(props: Props) {
     e.preventDefault();
 
     if (props.mode === "edit") {
-      const expense = props.expense;
-      setType(expense.type);
-      setTitle(expense.title);
-      setAmount(expense.amount === 0 && isPaying ? "" : String(expense.amount));
-      setCategories(expense.categories);
+      const transaction = props.transaction;
+      setType(transaction.type);
+      setTitle(transaction.title);
+      setAmount(transaction.amount === 0 && isPaying ? "" : String(transaction.amount));
+      setCategories(transaction.categories);
       setCategoryInput("");
-      setDate(isPaying ? nowLocalDateTime() : toDateTimeLocalValue(expense.date));
-      setAffectsBalance(expense.affectsBalance);
+      setDate(isPaying ? nowLocalDateTime() : toDateTimeLocalValue(transaction.date));
+      setAffectsBalance(transaction.affectsBalance);
       setAccountId(
         isPaying
           ? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT
-          : expense.accountId ?? NO_ACCOUNT
+          : transaction.accountId ?? NO_ACCOUNT
       );
-      setUseInstallments(!!expense.installments);
-      setInstallments(expense.installments ? String(expense.installments) : "");
+      setUseInstallments(!!transaction.installments);
+      setInstallments(transaction.installments ? String(transaction.installments) : "");
     } else {
       setType("expense");
       setTitle(props.initialTitle?.trim() ?? "");
@@ -148,7 +148,7 @@ export function ExpenseDialog(props: Props) {
     const accountUnchanged =
       props.mode === "edit" &&
       !isPaying &&
-      accountId === (props.expense.accountId ?? NO_ACCOUNT);
+      accountId === (props.transaction.accountId ?? NO_ACCOUNT);
 
     if (!accountUnchanged && isCreditSelected && selectedAccount?.paymentDay == null) {
       setError("Esta tarjeta no tiene día de pago configurado. Edítala en Cuentas antes de usarla.");
@@ -166,7 +166,7 @@ export function ExpenseDialog(props: Props) {
 
     let resolvedPaymentDay: number | undefined;
     if (props.mode === "edit" && accountUnchanged) {
-      resolvedPaymentDay = props.expense.paymentDay;
+      resolvedPaymentDay = props.transaction.paymentDay;
     } else {
       resolvedPaymentDay = isCreditSelected ? selectedAccount?.paymentDay : undefined;
     }
@@ -176,8 +176,8 @@ export function ExpenseDialog(props: Props) {
 
     try {
       if (props.mode === "edit") {
-        await updateExpense({
-          ...props.expense,
+        await updateTransaction({
+          ...props.transaction,
           type,
           title: trimmedTitle,
           amount: parsedAmount,
@@ -190,7 +190,7 @@ export function ExpenseDialog(props: Props) {
           pending: false,
         });
       } else {
-        await addExpense({
+        await addTransaction({
           id: crypto.randomUUID(),
           type,
           title: trimmedTitle,
@@ -221,7 +221,7 @@ export function ExpenseDialog(props: Props) {
     setError(null);
 
     try {
-      await deleteExpense(props.expense.id);
+      await deleteTransaction(props.transaction.id);
       onOpenChange(false);
       onSaved?.();
     } catch {

@@ -1,6 +1,6 @@
-import { Expense } from "./expenses.types";
+import { Transaction } from "./transactions.types";
 
-export const mockExpenses: Expense[] = [
+export const mockTransactions: Transaction[] = [
   {
     id: "1",
     title: "Reembolso Viaje Julio",

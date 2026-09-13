@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
-import { ExpenseType } from "@/features/expenses/expenses.types";
+import { TransactionType } from "@/features/transactions/transactions.types";
 
 function todayISODate() {
   const now = new Date();
@@ -42,7 +42,7 @@ export function SubscriptionDialog(props: Props) {
   const updateSubscription = useSubscriptionsStore(state => state.updateSubscription);
   const deleteSubscription = useSubscriptionsStore(state => state.deleteSubscription);
 
-  const [type, setType] = useState<ExpenseType>("expense");
+  const [type, setType] = useState<TransactionType>("expense");
   const [title, setTitle] = useState("");
   const [hasFixedAmount, setHasFixedAmount] = useState(true);
   const [amount, setAmount] = useState("");

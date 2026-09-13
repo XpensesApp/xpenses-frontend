@@ -1,10 +1,10 @@
-import { Expense } from "./expenses.types";
+import { Transaction } from "./transactions.types";
 import { Account } from "@/features/accounts/accounts.types";
 import { Payment } from "@/features/payments/payments.types";
 import { clampDayToMonth, periodKey } from "@/lib/dates";
 
-function signedAmount(expense: Expense) {
-  return expense.type === "income" ? expense.amount : -expense.amount;
+function signedAmount(transaction: Transaction) {
+  return transaction.type === "income" ? transaction.amount : -transaction.amount;
 }
 
 export type InstallmentInfo = {
@@ -20,7 +20,7 @@ export type InstallmentInfo = {
  * account's current setting, so editing a card never rewrites past
  * purchases. Returns an empty schedule for non-credit entries.
  */
-export function getInstallmentSchedule(purchase: Expense): InstallmentInfo[] {
+export function getInstallmentSchedule(purchase: Transaction): InstallmentInfo[] {
   if (purchase.paymentDay == null) return [];
 
   const paymentDay = purchase.paymentDay;
@@ -73,14 +73,14 @@ type LedgerItem = {
  */
 export function getCardLedger(
   cardAccountId: string,
-  expenses: Expense[],
+  transactions: Transaction[],
   payments: Payment[]
 ): LedgerItem[] {
-  const linkedEntries = expenses.filter(
-    e => e.accountId === cardAccountId && e.paymentDay != null && e.affectsBalance && !e.pending
+  const linkedEntries = transactions.filter(
+    t => t.accountId === cardAccountId && t.paymentDay != null && t.affectsBalance && !t.pending
   );
-  const purchases = linkedEntries.filter(e => e.type === "expense");
-  const refunds = linkedEntries.filter(e => e.type === "income");
+  const purchases = linkedEntries.filter(t => t.type === "expense");
+  const refunds = linkedEntries.filter(t => t.type === "income");
 
   const flattened = purchases.flatMap(purchase =>
     getInstallmentSchedule(purchase).map(installment => ({
@@ -112,10 +112,10 @@ export function getCardLedger(
 /** Total remaining balance on a credit card: every unpaid installment, billed or not. */
 export function computeCardDebt(
   cardAccountId: string,
-  expenses: Expense[],
+  transactions: Transaction[],
   payments: Payment[]
 ): number {
-  return getCardLedger(cardAccountId, expenses, payments).reduce(
+  return getCardLedger(cardAccountId, transactions, payments).reduce(
     (total, item) => total + item.remaining,
     0
   );
@@ -133,11 +133,11 @@ export function computeCardDebt(
  */
 export function computeNextCardObligation(
   cardAccountId: string,
-  expenses: Expense[],
+  transactions: Transaction[],
   payments: Payment[],
   asOf: Date = new Date()
 ): { amount: number; dueDate: Date; isDue: boolean } | null {
-  const outstanding = getCardLedger(cardAccountId, expenses, payments).filter(
+  const outstanding = getCardLedger(cardAccountId, transactions, payments).filter(
     item => item.remaining > 0
   );
   if (outstanding.length === 0) return null;
@@ -164,12 +164,12 @@ function upcomingPeriod(sortedByDueDate: LedgerItem[]): LedgerItem[] {
 /** Remaining balance grouped by due period ("2026-09"), sorted chronologically — includes the current period and every future one with a balance left. */
 export function computeUpcomingObligations(
   cardAccountId: string,
-  expenses: Expense[],
+  transactions: Transaction[],
   payments: Payment[]
 ): { period: string; amount: number }[] {
   const byPeriod = new Map<string, number>();
 
-  for (const item of getCardLedger(cardAccountId, expenses, payments)) {
+  for (const item of getCardLedger(cardAccountId, transactions, payments)) {
     if (item.remaining <= 0) continue;
     const key = periodKey(item.dueDate);
     byPeriod.set(key, (byPeriod.get(key) ?? 0) + item.remaining);
@@ -184,10 +184,10 @@ export function computeUpcomingObligations(
 export function countRemainingInstallments(
   purchaseId: string,
   cardAccountId: string,
-  expenses: Expense[],
+  transactions: Transaction[],
   payments: Payment[]
 ): { paid: number; total: number } {
-  const items = getCardLedger(cardAccountId, expenses, payments).filter(
+  const items = getCardLedger(cardAccountId, transactions, payments).filter(
     item => item.purchaseId === purchaseId
   );
 
@@ -202,12 +202,12 @@ export function countRemainingInstallments(
  * credit-card debt. Credit purchases don't reduce actual balance until
  * they're paid off; paying a card does, via its recorded payments.
  */
-export function computeBalances(expenses: Expense[], payments: Payment[]) {
+export function computeBalances(transactions: Transaction[], payments: Payment[]) {
   let actualBalance = 0;
 
-  for (const expense of expenses) {
-    if (!expense.affectsBalance || expense.pending || expense.paymentDay != null) continue;
-    actualBalance += signedAmount(expense);
+  for (const transaction of transactions) {
+    if (!transaction.affectsBalance || transaction.pending || transaction.paymentDay != null) continue;
+    actualBalance += signedAmount(transaction);
   }
 
   for (const payment of payments) {
@@ -215,14 +215,14 @@ export function computeBalances(expenses: Expense[], payments: Payment[]) {
   }
 
   const cardAccountIds = new Set(
-    expenses
-      .filter((e): e is Expense & { accountId: string } => e.paymentDay != null && !!e.accountId)
-      .map(e => e.accountId)
+    transactions
+      .filter((t): t is Transaction & { accountId: string } => t.paymentDay != null && !!t.accountId)
+      .map(t => t.accountId)
   );
 
   let debt = 0;
   for (const cardAccountId of cardAccountIds) {
-    debt += computeCardDebt(cardAccountId, expenses, payments);
+    debt += computeCardDebt(cardAccountId, transactions, payments);
   }
 
   return {
@@ -235,20 +235,20 @@ export function computeBalances(expenses: Expense[], payments: Payment[]) {
 /** Balance for a single account: card debt for credit accounts, net cash movement (spending minus payments made from it) otherwise. The synthetic untracked account matches entries with no linked account at all, rather than a specific id. */
 export function computeAccountBalance(
   account: Account,
-  expenses: Expense[],
+  transactions: Transaction[],
   payments: Payment[]
 ): number {
   if (account.type === "credit") {
-    return computeCardDebt(account.id, expenses, payments);
+    return computeCardDebt(account.id, transactions, payments);
   }
 
   const matches = account.isUntracked
     ? (id: string | undefined) => !id
     : (id: string | undefined) => id === account.id;
 
-  const spent = expenses
-    .filter(e => e.affectsBalance && !e.pending && matches(e.accountId))
-    .reduce((total, e) => total + signedAmount(e), 0);
+  const spent = transactions
+    .filter(t => t.affectsBalance && !t.pending && matches(t.accountId))
+    .reduce((total, t) => total + signedAmount(t), 0);
 
   const paidOut = payments
     .filter(p => matches(p.sourceAccountId))

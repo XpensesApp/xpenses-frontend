@@ -6,47 +6,47 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 import { usePaymentsStore } from "@/store/payments.store";
-import { countRemainingInstallments } from "@/features/expenses/balance";
+import { countRemainingInstallments } from "@/features/transactions/balance";
 import { formatDateTime } from "@/lib/dates";
-import { Expense } from "../expenses.types";
-import { ExpenseDialog } from "./ExpenseDialog";
+import { Transaction } from "../transactions.types";
+import { TransactionDialog } from "./TransactionDialog";
 
 type Props = {
-  expense: Expense;
+  transaction: Transaction;
 };
 
 const MAX_VISIBLE_CATEGORIES = 3;
 
-export function ExpenseCard({ expense }: Props) {
+export function TransactionCard({ transaction }: Props) {
   const [editOpen, setEditOpen] = useState(false);
-  const isIncome = expense.type === "income";
+  const isIncome = transaction.type === "income";
   const account = useAccountsStore(state =>
-    state.accounts.find(a => a.id === expense.accountId)
+    state.accounts.find(a => a.id === transaction.accountId)
   );
   const subscription = useSubscriptionsStore(state =>
-    state.subscriptions.find(s => s.id === expense.subscriptionId)
+    state.subscriptions.find(s => s.id === transaction.subscriptionId)
   );
-  const allExpenses = useExpensesStore(state => state.expenses);
+  const allTransactions = useTransactionsStore(state => state.transactions);
   const payments = usePaymentsStore(state => state.payments);
 
-  const isCreditPurchase = expense.paymentDay != null;
+  const isCreditPurchase = transaction.paymentDay != null;
   const installmentProgress =
-    isCreditPurchase && expense.accountId
-      ? countRemainingInstallments(expense.id, expense.accountId, allExpenses, payments)
+    isCreditPurchase && transaction.accountId
+      ? countRemainingInstallments(transaction.id, transaction.accountId, allTransactions, payments)
       : null;
   const hasRemainingDebt = !!installmentProgress && installmentProgress.paid < installmentProgress.total;
 
-  const visibleCategories = expense.categories.slice(0, MAX_VISIBLE_CATEGORIES);
-  const hiddenCategories = expense.categories.slice(MAX_VISIBLE_CATEGORIES);
+  const visibleCategories = transaction.categories.slice(0, MAX_VISIBLE_CATEGORIES);
+  const hiddenCategories = transaction.categories.slice(MAX_VISIBLE_CATEGORIES);
 
   return (
     <Card className="py-0">
       <CardContent className="flex items-center gap-3 px-3 py-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="min-w-0 truncate font-medium">{expense.title}</span>
+            <span className="min-w-0 truncate font-medium">{transaction.title}</span>
             {visibleCategories.map(category => (
               <span key={category} className="shrink-0 text-xs text-muted-foreground">
                 {category}
@@ -65,7 +65,7 @@ export function ExpenseCard({ expense }: Props) {
                 {account.name}
               </span>
             )}
-            {isCreditPurchase && expense.installments && installmentProgress && (
+            {isCreditPurchase && transaction.installments && installmentProgress && (
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
                 {installmentProgress.paid}/{installmentProgress.total} cuotas pagadas
               </span>
@@ -75,7 +75,7 @@ export function ExpenseCard({ expense }: Props) {
                 Pendiente
               </span>
             )}
-            {expense.subscriptionId && (
+            {transaction.subscriptionId && (
               <span
                 className="flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
                 title={subscription ? `Suscripción: ${subscription.title}` : "Suscripción eliminada"}
@@ -84,27 +84,27 @@ export function ExpenseCard({ expense }: Props) {
                 Suscripción
               </span>
             )}
-            {expense.pending && (
+            {transaction.pending && (
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-amber-600 dark:text-amber-400">
                 Por pagar
               </span>
             )}
-            {!expense.affectsBalance && (
+            {!transaction.affectsBalance && (
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
                 Referencial
               </span>
             )}
           </div>
           <span className="text-xs text-muted-foreground">
-            {formatDateTime(expense.date)}
+            {formatDateTime(transaction.date)}
           </span>
         </div>
 
-        {expense.pending ? (
+        {transaction.pending ? (
           <span className="shrink-0 font-medium tabular-nums text-amber-600 dark:text-amber-400">
-            {expense.amount === 0
+            {transaction.amount === 0
               ? "Por definir"
-              : `${isIncome ? "+" : "-"}$${expense.amount.toLocaleString()}`}
+              : `${isIncome ? "+" : "-"}$${transaction.amount.toLocaleString()}`}
           </span>
         ) : (
           <span
@@ -112,23 +112,23 @@ export function ExpenseCard({ expense }: Props) {
               isIncome ? "text-income" : "text-expense"
             }`}
           >
-            {isIncome ? "+" : "-"}${expense.amount.toLocaleString()}
+            {isIncome ? "+" : "-"}${transaction.amount.toLocaleString()}
           </span>
         )}
 
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={expense.pending ? "Pagar movimiento" : "Editar movimiento"}
+          aria-label={transaction.pending ? "Pagar movimiento" : "Editar movimiento"}
           onClick={() => setEditOpen(true)}
         >
-          {expense.pending ? <WalletIcon /> : <PencilIcon />}
+          {transaction.pending ? <WalletIcon /> : <PencilIcon />}
         </Button>
       </CardContent>
 
-      <ExpenseDialog
+      <TransactionDialog
         mode="edit"
-        expense={expense}
+        transaction={transaction}
         open={editOpen}
         onOpenChange={setEditOpen}
       />

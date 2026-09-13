@@ -1,4 +1,4 @@
-import { ExpenseType } from "@/features/expenses/expenses.types";
+import { TransactionType } from "@/features/transactions/transactions.types";
 
 export type SubscriptionStatus = "active" | "paused";
 
@@ -10,7 +10,7 @@ export type Subscription = {
   category: string;
   /** Day of the month this subscription is billed (1-31). */
   billingDay: number;
-  type: ExpenseType;
+  type: TransactionType;
   /** Whether entries generated from this subscription affect the balance by default. */
   affectsBalance: boolean;
   status: SubscriptionStatus;

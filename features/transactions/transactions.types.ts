@@ -1,13 +1,13 @@
-export type ExpenseType = "expense" | "income";
+export type TransactionType = "expense" | "income";
 
-export type Expense = {
+export type Transaction = {
   id: string;
   title: string;
   amount: number;
   /** Categories/tags this entry belongs to. An empty array means uncategorized. */
   categories: string[];
   date: string;
-  type: ExpenseType;
+  type: TransactionType;
   /** Whether this entry affects the balance total, or is only referencial. Defaults to true. */
   affectsBalance: boolean;
   /** Account this entry is charged to. Undefined means untracked (no account). */

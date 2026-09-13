@@ -5,12 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAccountsStore } from "@/store/accounts.store";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 import { usePaymentsStore } from "@/store/payments.store";
 import {
   computeNextCardObligation,
   computeUpcomingObligations,
-} from "@/features/expenses/balance";
+} from "@/features/transactions/balance";
 import { periodKey } from "@/lib/dates";
 import { Account } from "../accounts.types";
 import { AccountPaymentDialog } from "./AccountPaymentDialog";
@@ -32,21 +32,21 @@ function formatDueDate(date: Date) {
  * Actionable pending card payments, surfaced directly on the dashboard
  * instead of only inside a dialog. Every value here — the amount, the due
  * date, which purchases it covers — is derived on render from the
- * `expenses` (purchases) and `payments` stores via `computeNextCardObligation`.
+ * `transactions` (purchases) and `payments` stores via `computeNextCardObligation`.
  * Paying doesn't update or remove anything here: it records a Payment, and
  * on the next render this list simply reflects the smaller remaining debt —
  * or the next card in line, once one is fully settled.
  */
 export function UpcomingCardPayments() {
   const accounts = useAccountsStore(state => state.accounts);
-  const expenses = useExpensesStore(state => state.expenses);
+  const transactions = useTransactionsStore(state => state.transactions);
   const payments = usePaymentsStore(state => state.payments);
 
   const pending = accounts
     .filter(a => a.type === "credit")
     .map(account => ({
       account,
-      obligation: computeNextCardObligation(account.id, expenses, payments),
+      obligation: computeNextCardObligation(account.id, transactions, payments),
     }))
     .filter(
       (entry): entry is { account: Account; obligation: Obligation } =>
@@ -77,11 +77,11 @@ function CardPaymentRow({
   obligation: Obligation;
 }) {
   const [payOpen, setPayOpen] = useState(false);
-  const expenses = useExpensesStore(state => state.expenses);
+  const transactions = useTransactionsStore(state => state.transactions);
   const payments = usePaymentsStore(state => state.payments);
   const addPayment = usePaymentsStore(state => state.addPayment);
 
-  const upcoming = computeUpcomingObligations(account.id, expenses, payments)
+  const upcoming = computeUpcomingObligations(account.id, transactions, payments)
     .filter(o => o.period > periodKey(obligation.dueDate))
     .slice(0, 3);
 

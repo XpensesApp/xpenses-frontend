@@ -60,10 +60,10 @@ Current example:
 
 ```text
 features/
-  expenses/
-    expenses.types.ts
-    expenses.mock.ts
-    expenses.service.ts
+  transactions/
+    transactions.types.ts
+    transactions.mock.ts
+    transactions.service.ts
     components/
 ```
 
@@ -88,7 +88,7 @@ UI
  ↓
 Zustand store
  ↓
-expenses.service
+transactions.service
  ↓
 in-memory mock data
 ```
@@ -121,7 +121,7 @@ Zustand is better suited to client-side state that genuinely benefits from centr
 
 ### Financial data model
 
-Credit-card debt (`features/expenses/balance.ts`) only persists facts: a purchase (an expense linked to an account, with the card's payment day snapshotted onto it at the time of purchase), a payment (amount, date, source account), and the account itself. Current debt, what's due now, upcoming obligations, and remaining installments are always computed from those facts, never stored — check whether a new "how much/when" value is derivable before adding a field for it.
+Credit-card debt (`features/transactions/balance.ts`) only persists facts: a purchase (an expense linked to an account, with the card's payment day snapshotted onto it at the time of purchase), a payment (amount, date, source account), and the account itself. Current debt, what's due now, upcoming obligations, and remaining installments are always computed from those facts, never stored — check whether a new "how much/when" value is derivable before adding a field for it.
 
 A purchase's snapshotted payment day is never re-read from the account afterward, so editing a card's settings never rewrites the schedule of past purchases. A payment is never linked to a specific purchase; attribution (which purchase it "covers") is always recomputed, oldest obligation first.
 
@@ -133,7 +133,7 @@ Accounts remain optional on every transaction. An entry with no account is "untr
 
 ## 5. State Management
 
-Zustand is currently used for expenses.
+Zustand is currently used for transactions (expenses and income, via the `Transaction` entity).
 
 It should not automatically be introduced for every piece of state.
 
@@ -147,7 +147,7 @@ Examples of state that may benefit from Zustand in the future include globally r
 
 Do not introduce Zustand simply because the project already uses it.
 
-When one store's action needs another store's current data, read it via `useOtherStore.getState()` rather than coupling the stores' hooks together. Example: `store/subscriptions.store.ts`'s `syncDueEntries` reads and writes `useExpensesStore` this way.
+When one store's action needs another store's current data, read it via `useOtherStore.getState()` rather than coupling the stores' hooks together. Example: `store/subscriptions.store.ts`'s `syncDueEntries` reads and writes `useTransactionsStore` this way.
 
 ---
 
@@ -188,7 +188,7 @@ Avoid creating custom abstractions around shadcn components unless there is a co
 
 Keep project-specific components separate from generic UI primitives.
 
-shadcn's `Select` (Radix) rejects an empty-string item value. For an optional selection, use a sentinel string (e.g. `"none"`) and convert it to/from `undefined` at the boundary — see `NO_ACCOUNT` in `ExpenseDialog`.
+shadcn's `Select` (Radix) rejects an empty-string item value. For an optional selection, use a sentinel string (e.g. `"none"`) and convert it to/from `undefined` at the boundary — see `NO_ACCOUNT` in `TransactionDialog`.
 
 ---
 

@@ -3,63 +3,63 @@
 import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontalIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useExpensesStore } from "@/store/expenses.store";
+import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { usePaymentsStore } from "@/store/payments.store";
 import { normalizeForSearch, cn } from "@/lib/utils";
-import { computeBalances } from "@/features/expenses/balance";
-import { ExpenseCard } from "@/features/expenses/components/ExpenseCard";
-import { CreateExpenseDialog } from "@/features/expenses/components/CreateExpenseDialog";
+import { computeBalances } from "@/features/transactions/balance";
+import { TransactionCard } from "@/features/transactions/components/TransactionCard";
+import { CreateTransactionDialog } from "@/features/transactions/components/CreateTransactionDialog";
 import { PaymentCard } from "@/features/payments/components/PaymentCard";
 import { UpcomingCardPayments } from "@/features/accounts/components/UpcomingCardPayments";
 import {
-    ExpenseFilters,
-    ExpenseFiltersState,
-    emptyExpenseFilters,
-} from "@/features/expenses/components/ExpenseFilters";
+    TransactionFilters,
+    TransactionFiltersState,
+    emptyTransactionFilters,
+} from "@/features/transactions/components/TransactionFilters";
 
 export default function MovementsPage() {
-    const { expenses, loadExpenses } = useExpensesStore();
+    const { transactions, loadTransactions } = useTransactionsStore();
     const { accounts, loadAccounts } = useAccountsStore();
     const { loadSubscriptions, syncDueEntries } = useSubscriptionsStore();
     const { payments, loadPayments } = usePaymentsStore();
-    const [filters, setFilters] = useState<ExpenseFiltersState>(emptyExpenseFilters);
+    const [filters, setFilters] = useState<TransactionFiltersState>(emptyTransactionFilters);
     const [showFilters, setShowFilters] = useState(false);
     const hasActiveFilters =
         filters.search !== "" || filters.category !== "" || filters.account !== "";
 
     useEffect(() => {
         async function init() {
-            await Promise.all([loadExpenses(), loadAccounts(), loadPayments(), loadSubscriptions()]);
+            await Promise.all([loadTransactions(), loadAccounts(), loadPayments(), loadSubscriptions()]);
             await syncDueEntries();
         }
         init();
-    }, [loadExpenses, loadAccounts, loadPayments, loadSubscriptions, syncDueEntries]);
+    }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions, syncDueEntries]);
 
     const { actualBalance, debt, generalBalance } = useMemo(() => {
-        return computeBalances(expenses, payments);
-    }, [expenses, payments]);
+        return computeBalances(transactions, payments);
+    }, [transactions, payments]);
 
     const categories = useMemo(() => {
-        return Array.from(new Set(expenses.flatMap(e => e.categories)));
-    }, [expenses]);
+        return Array.from(new Set(transactions.flatMap(t => t.categories)));
+    }, [transactions]);
 
     // Credit-card payments are movements too (a real cash outflow), shown
-    // alongside expenses in the same list — but they have no title/category
+    // alongside transactions in the same list — but they have no title/category
     // of their own, so search matches a synthetic "pago <card>" label and a
-    // category filter always excludes them, same as an uncategorized expense.
+    // category filter always excludes them, same as an uncategorized transaction.
     const movements = useMemo(() => {
         const search = normalizeForSearch(filters.search.trim());
 
-        const filteredExpenses = expenses.filter(expense => {
-            if (search && !normalizeForSearch(expense.title).includes(search)) {
+        const filteredTransactions = transactions.filter(transaction => {
+            if (search && !normalizeForSearch(transaction.title).includes(search)) {
                 return false;
             }
-            if (filters.category && !expense.categories.includes(filters.category)) {
+            if (filters.category && !transaction.categories.includes(filters.category)) {
                 return false;
             }
-            if (filters.account && expense.accountId !== filters.account) {
+            if (filters.account && transaction.accountId !== filters.account) {
                 return false;
             }
             return true;
@@ -82,12 +82,12 @@ export default function MovementsPage() {
         });
 
         return [
-            ...filteredExpenses.map(expense => ({
-                kind: "expense" as const,
-                id: expense.id,
-                date: expense.date,
-                amount: expense.amount,
-                expense,
+            ...filteredTransactions.map(transaction => ({
+                kind: "transaction" as const,
+                id: transaction.id,
+                date: transaction.date,
+                amount: transaction.amount,
+                transaction,
             })),
             ...filteredPayments.map(payment => ({
                 kind: "payment" as const,
@@ -97,7 +97,7 @@ export default function MovementsPage() {
                 payment,
             })),
         ];
-    }, [expenses, payments, accounts, filters]);
+    }, [transactions, payments, accounts, filters]);
 
     const sortedMovements = useMemo(() => {
         const list = [...movements];
@@ -169,7 +169,7 @@ export default function MovementsPage() {
                     Registrar movimiento
                 </h2>
 
-                <CreateExpenseDialog />
+                <CreateTransactionDialog />
             </div>
 
             <div className="space-y-4 border-t pt-6">
@@ -189,7 +189,7 @@ export default function MovementsPage() {
                 </div>
 
                 {showFilters && (
-                    <ExpenseFilters
+                    <TransactionFilters
                         filters={filters}
                         onFiltersChange={setFilters}
                         categories={categories}
@@ -199,8 +199,8 @@ export default function MovementsPage() {
 
                 <ul className="space-y-2">
                     {sortedMovements.map(movement =>
-                        movement.kind === "expense" ? (
-                            <ExpenseCard key={`expense-${movement.id}`} expense={movement.expense} />
+                        movement.kind === "transaction" ? (
+                            <TransactionCard key={`transaction-${movement.id}`} transaction={movement.transaction} />
                         ) : (
                             <PaymentCard key={`payment-${movement.id}`} payment={movement.payment} />
                         )
