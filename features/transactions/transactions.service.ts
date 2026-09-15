@@ -1,7 +1,7 @@
 import { getSession } from "next-auth/react";
 import { Transaction, TransactionType } from "./transactions.types";
 
-const BASE_URL = process.env.TRANSACTIONS_API_BASE_URL!;
+const BASE_URL = process.env.NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL!;
 
 // The backend is currently unprotected: it identifies whose data is being
 // read/written via an `email` field on every request, instead of a JWT. This

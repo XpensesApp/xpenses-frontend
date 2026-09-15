@@ -10,10 +10,10 @@ export async function GET() {
   const domain = process.env.COGNITO_DOMAIN!.replace(/^https?:\/\//, "");
   const logoutUrl = new URL(`https://${domain}/logout`);
   logoutUrl.searchParams.set("client_id", process.env.AUTH_COGNITO_ID!);
-  // AUTH_URL (not request.url) — on Amplify's SSR compute the Host the server
+  // DEPLOYMENT_URL (not request.url) — on Amplify's SSR compute the Host the server
   // sees is the container's internal address, not the public domain, which
   // previously leaked into logout_uri as https://localhost:3000/.
-  logoutUrl.searchParams.set("logout_uri", new URL("/", process.env.AUTH_URL!).toString());
+  logoutUrl.searchParams.set("logout_uri", new URL("/", process.env.DEPLOYMENT_URL!).toString());
 
   return NextResponse.redirect(logoutUrl);
 }
