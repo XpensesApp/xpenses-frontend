@@ -10,10 +10,17 @@ export async function GET() {
   const domain = process.env.COGNITO_DOMAIN!.replace(/^https?:\/\//, "");
   const logoutUrl = new URL(`https://${domain}/logout`);
   logoutUrl.searchParams.set("client_id", process.env.AUTH_COGNITO_ID!);
-  // DEPLOYMENT_URL (not request.url) — on Amplify's SSR compute the Host the server
-  // sees is the container's internal address, not the public domain, which
-  // previously leaked into logout_uri as https://localhost:3000/.
-  logoutUrl.searchParams.set("logout_uri", new URL("/", process.env.DEPLOYMENT_URL!).toString());
+  // NEXT_PUBLIC_DEPLOYMENT_URL, not request.url or a plain server-only env var:
+  // on Amplify's SSR compute, request.url reflects the container's internal
+  // address rather than the public domain (previously leaking into logout_uri
+  // as https://localhost:3000/), and Amplify also doesn't reliably expose
+  // Console-configured env vars to the Lambda at *request* time — only at
+  // *build* time. The NEXT_PUBLIC_ prefix makes Next.js inline this as a
+  // literal string during the build, sidestepping that unreliability entirely.
+  logoutUrl.searchParams.set(
+    "logout_uri",
+    new URL("/", process.env.NEXT_PUBLIC_DEPLOYMENT_URL!).toString()
+  );
 
   return NextResponse.redirect(logoutUrl);
 }

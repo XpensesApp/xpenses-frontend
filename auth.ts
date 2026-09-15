@@ -10,8 +10,9 @@ export const {
   // Auth.js normally auto-derives this from an env var literally named
   // AUTH_URL (or from platform-specific ones like VERCEL/CF_PAGES) — that's
   // an @auth/core convention, not something we control by naming our own
-  // var. We don't set AUTH_URL at all (our own DEPLOYMENT_URL var is unrelated
-  // and only read directly by cognito-logout/route.ts), and even when we did,
+  // var. We don't set AUTH_URL at all (our own NEXT_PUBLIC_DEPLOYMENT_URL var
+  // is unrelated and only read directly by cognito-logout/route.ts), and even
+  // when we did,
   // AWS Amplify's SSR compute didn't reliably expose Console-configured
   // environment variables to the Lambda at request time the way it does at
   // build time — trustHost ended up false there even with AUTH_URL set,
