@@ -191,7 +191,6 @@ export function TransactionDialog(props: Props) {
         });
       } else {
         await addTransaction({
-          id: crypto.randomUUID(),
           type,
           title: trimmedTitle,
           amount: parsedAmount,
@@ -221,7 +220,7 @@ export function TransactionDialog(props: Props) {
     setError(null);
 
     try {
-      await deleteTransaction(props.transaction.id);
+      await deleteTransaction(props.transaction.id, props.transaction.date);
       onOpenChange(false);
       onSaved?.();
     } catch {

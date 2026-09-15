@@ -84,7 +84,6 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
       if (alreadyExists) continue;
 
       await addTransaction({
-        id: crypto.randomUUID(),
         title: subscription.title,
         amount: subscription.amount ?? 0,
         categories: subscription.category ? [subscription.category] : [],

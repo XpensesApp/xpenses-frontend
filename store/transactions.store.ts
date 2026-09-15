@@ -5,9 +5,9 @@ import { transactionsService } from "@/features/transactions/transactions.servic
 type TransactionsState = {
   transactions: Transaction[];
   loadTransactions: () => Promise<void>;
-  addTransaction: (transaction: Transaction) => Promise<void>;
+  addTransaction: (transaction: Omit<Transaction, "id">) => Promise<void>;
   updateTransaction: (transaction: Transaction) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
+  deleteTransaction: (id: string, date: string) => Promise<void>;
 };
 
 export const useTransactionsStore = create<TransactionsState>((set) => ({
@@ -19,21 +19,24 @@ export const useTransactionsStore = create<TransactionsState>((set) => ({
   },
 
   addTransaction: async (transaction) => {
-    await transactionsService.create(transaction);
+    const created = await transactionsService.create(transaction);
     set(state => ({
-      transactions: [transaction, ...state.transactions],
+      transactions: [created, ...state.transactions],
     }));
   },
 
   updateTransaction: async (transaction) => {
-    await transactionsService.update(transaction);
+    const updated = await transactionsService.update(transaction);
     set(state => ({
-      transactions: state.transactions.map(t => (t.id === transaction.id ? transaction : t)),
+      transactions: state.transactions.map(t => (t.id === updated.id ? updated : t)),
     }));
   },
 
-  deleteTransaction: async (id) => {
-    await transactionsService.delete(id);
+  // The backend's delete key is `email` + `transactionId` + `date`, so the
+  // date has to travel alongside the id — it can't be looked up from `id`
+  // alone the way the in-memory mock could.
+  deleteTransaction: async (id, date) => {
+    await transactionsService.delete(id, date);
     set(state => ({
       transactions: state.transactions.filter(t => t.id !== id),
     }));

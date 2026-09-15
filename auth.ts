@@ -36,5 +36,25 @@ export const {
     authorized({ auth }) {
       return !!auth;
     },
+    // `account` is only populated on the initial sign-in (not on later
+    // token refreshes), so this fires exactly once per login — provisioning
+    // the user's backend record via the same Cognito ID token every other
+    // backend call will use to authenticate. A failure here doesn't block
+    // sign-in: the backend's own auth is idempotent, so the next call
+    // (this one on the next login, or the backend's own auth middleware)
+    // can still provision the user later.
+    async jwt({ token, account }) {
+      if (account?.id_token) {
+        try {
+          await fetch(process.env.AUTH_SYNC_API_BASE_URL!, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${account.id_token}` },
+          });
+        } catch (error) {
+          console.error("Failed to sync user with backend:", error);
+        }
+      }
+      return token;
+    },
   },
 });
