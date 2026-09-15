@@ -1,23 +1,29 @@
 import NextAuth from "next-auth";
 import Cognito from "next-auth/providers/cognito";
 
+// AUTH_URL is the env var name @auth/core specifically auto-reads for its own
+// base URL — but reading it as a plain runtime var doesn't work reliably here:
+// AWS Amplify's SSR compute doesn't consistently expose Console-configured
+// env vars to the Lambda at request time the way it does at build time. That
+// unreliability previously caused "UntrustedHost" (worked around below with
+// trustHost) and, worse, made Auth.js reconstruct the OAuth callback's
+// redirect_uri from the incoming request's Host header — which on this
+// platform is the container's internal address, not the public domain. Cognito
+// then rejects the token exchange (`invalid_redirect`) because that redirect_uri
+// doesn't match the one used in the original /authorize request. Seeding
+// AUTH_URL from NEXT_PUBLIC_DEPLOYMENT_URL sidesteps this: NEXT_PUBLIC_ vars
+// are inlined as literal strings at build time, so this value is immune to
+// Amplify's runtime env-delivery flakiness.
+process.env.AUTH_URL ??= process.env.NEXT_PUBLIC_DEPLOYMENT_URL;
+
 export const {
   handlers: { GET, POST },
   auth,
   signIn,
   signOut,
 } = NextAuth({
-  // Auth.js normally auto-derives this from an env var literally named
-  // AUTH_URL (or from platform-specific ones like VERCEL/CF_PAGES) — that's
-  // an @auth/core convention, not something we control by naming our own
-  // var. We don't set AUTH_URL at all (our own NEXT_PUBLIC_DEPLOYMENT_URL var
-  // is unrelated and only read directly by cognito-logout/route.ts), and even
-  // when we did,
-  // AWS Amplify's SSR compute didn't reliably expose Console-configured
-  // environment variables to the Lambda at request time the way it does at
-  // build time — trustHost ended up false there even with AUTH_URL set,
-  // throwing "UntrustedHost". Setting it explicitly removes the dependency
-  // on that auto-detection working correctly on any given host.
+  // Kept as a fallback for any path not covered by the explicit AUTH_URL set
+  // above — harmless now that AUTH_URL is reliably populated.
   trustHost: true,
   providers: [
     Cognito({
