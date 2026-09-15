@@ -15,11 +15,45 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTransactionsStore } from "@/store/transactions.store";
+import { useAccountsStore } from "@/store/accounts.store";
+import { usePaymentsStore } from "@/store/payments.store";
+import { useSubscriptionsStore } from "@/store/subscriptions.store";
 
+// Each page's own useEffect only starts loading data once it mounts — i.e.
+// after the click completes. Starting the same (read-only) loads on hover
+// lets that network round-trip happen while the user is still moving toward
+// the link, so the data is often already back by the time they land on the
+// page. Uses getState() rather than the hooks, so Navbar itself doesn't
+// subscribe to (and re-render on) these stores.
 const navItems = [
-  { label: "Mis movimientos", href: "/" },
-  { label: "Cuentas", href: "/accounts" },
-  { label: "Suscripciones", href: "/subscriptions" },
+  {
+    label: "Mis movimientos",
+    href: "/",
+    prefetchData: () => {
+      useTransactionsStore.getState().loadTransactions();
+      useAccountsStore.getState().loadAccounts();
+      usePaymentsStore.getState().loadPayments();
+      useSubscriptionsStore.getState().loadSubscriptions();
+    },
+  },
+  {
+    label: "Cuentas",
+    href: "/accounts",
+    prefetchData: () => {
+      useAccountsStore.getState().loadAccounts();
+      useTransactionsStore.getState().loadTransactions();
+      usePaymentsStore.getState().loadPayments();
+    },
+  },
+  {
+    label: "Suscripciones",
+    href: "/subscriptions",
+    prefetchData: () => {
+      useTransactionsStore.getState().loadTransactions();
+      useSubscriptionsStore.getState().loadSubscriptions();
+    },
+  },
 ];
 
 export function Navbar() {
@@ -35,7 +69,12 @@ export function Navbar() {
 
       <div className="hidden flex-1 items-center gap-6 sm:flex">
         {navItems.map(item => (
-          <NavLink key={item.href} href={item.href} active={pathname === item.href}>
+          <NavLink
+            key={item.href}
+            href={item.href}
+            active={pathname === item.href}
+            onMouseEnter={item.prefetchData}
+          >
             {item.label}
           </NavLink>
         ))}
@@ -87,7 +126,9 @@ export function Navbar() {
           <DropdownMenuContent align="end">
             {navItems.map(item => (
               <DropdownMenuItem key={item.href} asChild>
-                <Link href={item.href}>{item.label}</Link>
+                <Link href={item.href} onMouseEnter={item.prefetchData}>
+                  {item.label}
+                </Link>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -100,15 +141,18 @@ export function Navbar() {
 function NavLink({
   href,
   active,
+  onMouseEnter,
   children,
 }: {
   href: string;
   active: boolean;
+  onMouseEnter?: () => void;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
+      onMouseEnter={onMouseEnter}
       className={cn(
         "text-sm transition-colors hover:text-foreground",
         active ? "font-medium text-foreground" : "text-muted-foreground"

@@ -8,11 +8,28 @@ const BASE_URL = process.env.NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL!;
 // is temporary (see the .env.example note), so the auth detail is kept local
 // to this service rather than threaded through the store/UI — swapping it
 // for a bearer token later should only touch this file.
+//
+// getSession() always does a fresh fetch to /api/auth/session — memoized here
+// so every list/create/update/delete isn't paying for that round-trip on top
+// of the actual backend call. Safe to cache for the page's lifetime: the
+// signed-in email can't change without a full sign-out (which navigates away)
+// or sign-in (which reloads the page).
+let cachedEmail: Promise<string> | null = null;
+
 async function currentEmail(): Promise<string> {
-  const session = await getSession();
-  const email = session?.user?.email;
-  if (!email) throw new Error("No authenticated user email available.");
-  return email;
+  if (!cachedEmail) {
+    cachedEmail = getSession()
+      .then(session => {
+        const email = session?.user?.email;
+        if (!email) throw new Error("No authenticated user email available.");
+        return email;
+      })
+      .catch(error => {
+        cachedEmail = null;
+        throw error;
+      });
+  }
+  return cachedEmail;
 }
 
 type WireTransaction = {

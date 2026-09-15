@@ -66,34 +66,45 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
     const subscriptions = get().subscriptions;
     const { transactions, addTransaction } = useTransactionsStore.getState();
 
-    for (const subscription of subscriptions) {
-      if (subscription.status !== "active") continue;
-      if (subscription.endDate && subscription.endDate < todayISO) continue;
+    // Each due subscription is now a real backend POST rather than an
+    // in-memory write, so they're independent — fired in parallel instead of
+    // serialized one-by-one. Dedup is checked per-subscription against the
+    // same pre-loop `transactions` snapshot, so this preserves the original
+    // loop's behavior (no cross-iteration re-checks either way).
+    const due = subscriptions.flatMap(subscription => {
+      if (subscription.status !== "active") return [];
+      if (subscription.endDate && subscription.endDate < todayISO) return [];
 
       const dueDate = mostRecentBillingDate(
         subscription.billingDay,
         today,
         new Date(subscription.createdAt)
       );
-      if (!dueDate) continue;
+      if (!dueDate) return [];
 
       const period = periodKey(dueDate);
       const alreadyExists = transactions.some(
         t => t.subscriptionId === subscription.id && t.billingPeriod === period
       );
-      if (alreadyExists) continue;
+      if (alreadyExists) return [];
 
-      await addTransaction({
-        title: subscription.title,
-        amount: subscription.amount ?? 0,
-        categories: subscription.category ? [subscription.category] : [],
-        date: toISODate(dueDate),
-        type: subscription.type,
-        affectsBalance: subscription.affectsBalance,
-        pending: true,
-        subscriptionId: subscription.id,
-        billingPeriod: period,
-      });
-    }
+      return [{ subscription, dueDate, period }];
+    });
+
+    await Promise.all(
+      due.map(({ subscription, dueDate, period }) =>
+        addTransaction({
+          title: subscription.title,
+          amount: subscription.amount ?? 0,
+          categories: subscription.category ? [subscription.category] : [],
+          date: toISODate(dueDate),
+          type: subscription.type,
+          affectsBalance: subscription.affectsBalance,
+          pending: true,
+          subscriptionId: subscription.id,
+          billingPeriod: period,
+        })
+      )
+    );
   },
 }));
