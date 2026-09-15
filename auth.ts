@@ -7,11 +7,14 @@ export const {
   signIn,
   signOut,
 } = NextAuth({
-  // Auth.js normally auto-derives this from DEPLOYMENT_URL being present in
-  // process.env (or from platform-specific env vars like VERCEL/CF_PAGES),
-  // but AWS Amplify's SSR compute doesn't reliably expose Console-configured
+  // Auth.js normally auto-derives this from an env var literally named
+  // AUTH_URL (or from platform-specific ones like VERCEL/CF_PAGES) — that's
+  // an @auth/core convention, not something we control by naming our own
+  // var. We don't set AUTH_URL at all (our own DEPLOYMENT_URL var is unrelated
+  // and only read directly by cognito-logout/route.ts), and even when we did,
+  // AWS Amplify's SSR compute didn't reliably expose Console-configured
   // environment variables to the Lambda at request time the way it does at
-  // build time — trustHost ended up false there even with DEPLOYMENT_URL set,
+  // build time — trustHost ended up false there even with AUTH_URL set,
   // throwing "UntrustedHost". Setting it explicitly removes the dependency
   // on that auto-detection working correctly on any given host.
   trustHost: true,
