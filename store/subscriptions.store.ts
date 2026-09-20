@@ -1,19 +1,14 @@
 import { create } from "zustand";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { subscriptionsService } from "@/features/subscriptions/subscriptions.service";
-import { mostRecentBillingDate } from "@/features/subscriptions/schedule";
-import { toISODate, periodKey } from "@/lib/dates";
-import { useTransactionsStore } from "@/store/transactions.store";
 
 type SubscriptionsState = {
   subscriptions: Subscription[];
   loadSubscriptions: () => Promise<void>;
-  addSubscription: (subscription: Subscription) => Promise<void>;
+  addSubscription: (subscription: Omit<Subscription, "id" | "createdAt">) => Promise<void>;
   updateSubscription: (subscription: Subscription) => Promise<void>;
   deleteSubscription: (id: string) => Promise<void>;
   toggleSubscriptionStatus: (id: string) => Promise<void>;
-  /** Simulates the backend job that creates a pending entry once a subscription's billing day arrives. */
-  syncDueEntries: () => Promise<void>;
 };
 
 export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
@@ -25,16 +20,16 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
   },
 
   addSubscription: async (subscription) => {
-    await subscriptionsService.create(subscription);
+    const created = await subscriptionsService.create(subscription);
     set(state => ({
-      subscriptions: [subscription, ...state.subscriptions],
+      subscriptions: [created, ...state.subscriptions],
     }));
   },
 
   updateSubscription: async (subscription) => {
-    await subscriptionsService.update(subscription);
+    const updated = await subscriptionsService.update(subscription);
     set(state => ({
-      subscriptions: state.subscriptions.map(s => (s.id === subscription.id ? subscription : s)),
+      subscriptions: state.subscriptions.map(s => (s.id === updated.id ? updated : s)),
     }));
   },
 
@@ -49,62 +44,12 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
     const subscription = get().subscriptions.find(s => s.id === id);
     if (!subscription) return;
 
-    const updated: Subscription = {
+    const updated = await subscriptionsService.update({
       ...subscription,
       status: subscription.status === "active" ? "paused" : "active",
-    };
-
-    await subscriptionsService.update(updated);
+    });
     set(state => ({
       subscriptions: state.subscriptions.map(s => (s.id === id ? updated : s)),
     }));
-  },
-
-  syncDueEntries: async () => {
-    const today = new Date();
-    const todayISO = toISODate(today);
-    const subscriptions = get().subscriptions;
-    const { transactions, addTransaction } = useTransactionsStore.getState();
-
-    // Each due subscription is now a real backend POST rather than an
-    // in-memory write, so they're independent — fired in parallel instead of
-    // serialized one-by-one. Dedup is checked per-subscription against the
-    // same pre-loop `transactions` snapshot, so this preserves the original
-    // loop's behavior (no cross-iteration re-checks either way).
-    const due = subscriptions.flatMap(subscription => {
-      if (subscription.status !== "active") return [];
-      if (subscription.endDate && subscription.endDate < todayISO) return [];
-
-      const dueDate = mostRecentBillingDate(
-        subscription.billingDay,
-        today,
-        new Date(subscription.createdAt)
-      );
-      if (!dueDate) return [];
-
-      const period = periodKey(dueDate);
-      const alreadyExists = transactions.some(
-        t => t.subscriptionId === subscription.id && t.billingPeriod === period
-      );
-      if (alreadyExists) return [];
-
-      return [{ subscription, dueDate, period }];
-    });
-
-    await Promise.all(
-      due.map(({ subscription, dueDate, period }) =>
-        addTransaction({
-          title: subscription.title,
-          amount: subscription.amount ?? 0,
-          categories: subscription.category ? [subscription.category] : [],
-          date: toISODate(dueDate),
-          type: subscription.type,
-          affectsBalance: subscription.affectsBalance,
-          pending: true,
-          subscriptionId: subscription.id,
-          billingPeriod: period,
-        })
-      )
-    );
   },
 }));

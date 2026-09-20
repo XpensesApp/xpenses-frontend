@@ -4,22 +4,16 @@ import { useEffect, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
-import { useTransactionsStore } from "@/store/transactions.store";
 import { SubscriptionCard } from "@/features/subscriptions/components/SubscriptionCard";
 import { SubscriptionDialog } from "@/features/subscriptions/components/SubscriptionDialog";
 
 export default function SubscriptionsPage() {
-    const { subscriptions, loadSubscriptions, syncDueEntries } = useSubscriptionsStore();
-    const loadTransactions = useTransactionsStore(state => state.loadTransactions);
+    const { subscriptions, loadSubscriptions } = useSubscriptionsStore();
     const [createOpen, setCreateOpen] = useState(false);
 
     useEffect(() => {
-        async function init() {
-            await Promise.all([loadTransactions(), loadSubscriptions()]);
-            await syncDueEntries();
-        }
-        init();
-    }, [loadTransactions, loadSubscriptions, syncDueEntries]);
+        loadSubscriptions();
+    }, [loadSubscriptions]);
 
     return (
         <section className="p-6 space-y-4">

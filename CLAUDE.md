@@ -79,9 +79,9 @@ When a new feature is added, first determine whether existing architecture can s
 
 ## 4. Data Layer
 
-The current application uses an in-memory mock service.
+**Current state**: mixed. `Transaction` and `Subscription` are real backend entities, served by an AWS API Gateway + Lambda backend (base URLs in `NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL` / `NEXT_PUBLIC_SUBSCRIPTIONS_API_BASE_URL`, called directly from the browser). `Account` and `Payment` are still an in-memory mock service.
 
-Current flow:
+Current flow for a migrated entity (e.g. Transactions):
 
 ```text
 UI
@@ -90,12 +90,22 @@ Zustand store
  ↓
 transactions.service
  ↓
+real backend (fetch)
+```
+
+Current flow for a not-yet-migrated entity (e.g. Accounts):
+
+```text
+UI
+ ↓
+Zustand store
+ ↓
+accounts.service
+ ↓
 in-memory mock data
 ```
 
-The service layer currently simulates asynchronous operations.
-
-There is no real backend yet.
+Both migrated backends are currently **unprotected**: requests identify whose data they touch via a plain `email` field (see `lib/current-email.ts`), not a JWT — a deliberate, temporary state until bearer-token auth is added. The service layer adapts each entity's wire shape (e.g. `transactionId` vs `id`, decimal-string amounts, `null` vs `undefined` for unset optionals) at the boundary, so the rest of the app keeps using its own established types.
 
 ### Future backend
 
@@ -263,7 +273,7 @@ The application is expected to eventually support:
 
 Implemented as Subscriptions (`features/subscriptions/`). A subscription has a title, an optional fixed amount (undefined means variable — set when the generated entry is paid), a category, a billing day (1-31), and an optional end date; it can be active or paused, and can only be deleted while paused.
 
-The "backend creates an entry when it's due" behavior is currently simulated client-side (`syncDueEntries` in `store/subscriptions.store.ts`): on load, it checks each subscription's most recent billing date and creates a `pending` entry if that cycle doesn't have one yet. Paying a pending entry (via the normal entry dialog) assigns it an account and clears `pending`.
+Subscriptions and Transactions are both real backend entities now (`NEXT_PUBLIC_SUBSCRIPTIONS_API_BASE_URL` / `NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL`). "Creating a pending entry when a subscription is due" is a backend job, not yet implemented there — the frontend no longer simulates it (the old client-side `syncDueEntries` was removed once the backend took over subscription CRUD, since duplicating that logic per-client doesn't scale, and the backend has the daily/scheduled job as the natural place for it). Until that job ships, due subscriptions simply won't generate a pending entry. Paying a pending entry (via the normal entry dialog) assigns it an account and clears `pending`.
 
 Recurrence is monthly-only, driven by a single day-of-month. Arbitrary periods (e.g. "every 5 days") are not implemented.
 

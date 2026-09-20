@@ -22,7 +22,7 @@ import {
 export default function MovementsPage() {
     const { transactions, loadTransactions } = useTransactionsStore();
     const { accounts, loadAccounts } = useAccountsStore();
-    const { loadSubscriptions, syncDueEntries } = useSubscriptionsStore();
+    const { loadSubscriptions } = useSubscriptionsStore();
     const { payments, loadPayments } = usePaymentsStore();
     const [filters, setFilters] = useState<TransactionFiltersState>(emptyTransactionFilters);
     const [showFilters, setShowFilters] = useState(false);
@@ -30,12 +30,8 @@ export default function MovementsPage() {
         filters.search !== "" || filters.category !== "" || filters.account !== "";
 
     useEffect(() => {
-        async function init() {
-            await Promise.all([loadTransactions(), loadAccounts(), loadPayments(), loadSubscriptions()]);
-            await syncDueEntries();
-        }
-        init();
-    }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions, syncDueEntries]);
+        Promise.all([loadTransactions(), loadAccounts(), loadPayments(), loadSubscriptions()]);
+    }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions]);
 
     const { actualBalance, debt, generalBalance } = useMemo(() => {
         return computeBalances(transactions, payments);

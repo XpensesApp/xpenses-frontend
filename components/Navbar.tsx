@@ -50,7 +50,6 @@ const navItems = [
     label: "Suscripciones",
     href: "/subscriptions",
     prefetchData: () => {
-      useTransactionsStore.getState().loadTransactions();
       useSubscriptionsStore.getState().loadSubscriptions();
     },
   },

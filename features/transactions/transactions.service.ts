@@ -1,36 +1,7 @@
-import { getSession } from "next-auth/react";
+import { getCurrentEmail } from "@/lib/current-email";
 import { Transaction, TransactionType } from "./transactions.types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL!;
-
-// The backend is currently unprotected: it identifies whose data is being
-// read/written via an `email` field on every request, instead of a JWT. This
-// is temporary (see the .env.example note), so the auth detail is kept local
-// to this service rather than threaded through the store/UI — swapping it
-// for a bearer token later should only touch this file.
-//
-// getSession() always does a fresh fetch to /api/auth/session — memoized here
-// so every list/create/update/delete isn't paying for that round-trip on top
-// of the actual backend call. Safe to cache for the page's lifetime: the
-// signed-in email can't change without a full sign-out (which navigates away)
-// or sign-in (which reloads the page).
-let cachedEmail: Promise<string> | null = null;
-
-async function currentEmail(): Promise<string> {
-  if (!cachedEmail) {
-    cachedEmail = getSession()
-      .then(session => {
-        const email = session?.user?.email;
-        if (!email) throw new Error("No authenticated user email available.");
-        return email;
-      })
-      .catch(error => {
-        cachedEmail = null;
-        throw error;
-      });
-  }
-  return cachedEmail;
-}
 
 type WireTransaction = {
   email: string;
@@ -96,7 +67,7 @@ async function parseError(res: Response, fallback: string): Promise<never> {
 
 export const transactionsService = {
   getAll: async (): Promise<Transaction[]> => {
-    const email = await currentEmail();
+    const email = await getCurrentEmail();
     const res = await fetch(`${BASE_URL}?email=${encodeURIComponent(email)}`);
     if (!res.ok) return parseError(res, "Failed to load transactions");
     const data = await res.json();
@@ -104,7 +75,7 @@ export const transactionsService = {
   },
 
   create: async (transaction: Omit<Transaction, "id">): Promise<Transaction> => {
-    const email = await currentEmail();
+    const email = await getCurrentEmail();
     const res = await fetch(BASE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -115,7 +86,7 @@ export const transactionsService = {
   },
 
   update: async (transaction: Transaction): Promise<Transaction> => {
-    const email = await currentEmail();
+    const email = await getCurrentEmail();
     const res = await fetch(BASE_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -129,7 +100,7 @@ export const transactionsService = {
   },
 
   delete: async (id: string, date: string): Promise<void> => {
-    const email = await currentEmail();
+    const email = await getCurrentEmail();
     const params = new URLSearchParams({
       email,
       transactionId: id,

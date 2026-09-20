@@ -14,12 +14,6 @@ import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { TransactionType } from "@/features/transactions/transactions.types";
 
-function todayISODate() {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
-}
-
 type CreateProps = {
   mode: "create";
 };
@@ -137,7 +131,6 @@ export function SubscriptionDialog(props: Props) {
         });
       } else {
         await addSubscription({
-          id: crypto.randomUUID(),
           type,
           title: trimmedTitle,
           amount: parsedAmount,
@@ -145,7 +138,6 @@ export function SubscriptionDialog(props: Props) {
           billingDay: parsedDay,
           affectsBalance,
           status: "active",
-          createdAt: todayISODate(),
           endDate: hasEndDate ? endDate : undefined,
         });
       }
