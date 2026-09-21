@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontalIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/Spinner";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
@@ -26,11 +27,14 @@ export default function MovementsPage() {
     const { payments, loadPayments } = usePaymentsStore();
     const [filters, setFilters] = useState<TransactionFiltersState>(emptyTransactionFilters);
     const [showFilters, setShowFilters] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const hasActiveFilters =
         filters.search !== "" || filters.category !== "" || filters.account !== "";
 
     useEffect(() => {
-        Promise.all([loadTransactions(), loadAccounts(), loadPayments(), loadSubscriptions()]);
+        Promise.all([loadTransactions(), loadAccounts(), loadPayments(), loadSubscriptions()]).finally(
+            () => setIsLoading(false)
+        );
     }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions]);
 
     const { actualBalance, debt, generalBalance } = useMemo(() => {
@@ -193,20 +197,26 @@ export default function MovementsPage() {
                     />
                 )}
 
-                <ul className="space-y-2">
-                    {sortedMovements.map(movement =>
-                        movement.kind === "transaction" ? (
-                            <TransactionCard key={`transaction-${movement.id}`} transaction={movement.transaction} />
-                        ) : (
-                            <PaymentCard key={`payment-${movement.id}`} payment={movement.payment} />
-                        )
-                    )}
-                </ul>
+                {isLoading ? (
+                    <Spinner />
+                ) : (
+                    <>
+                        <ul className="space-y-2">
+                            {sortedMovements.map(movement =>
+                                movement.kind === "transaction" ? (
+                                    <TransactionCard key={`transaction-${movement.id}`} transaction={movement.transaction} />
+                                ) : (
+                                    <PaymentCard key={`payment-${movement.id}`} payment={movement.payment} />
+                                )
+                            )}
+                        </ul>
 
-                {sortedMovements.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                        No se encontraron movimientos con estos filtros.
-                    </p>
+                        {sortedMovements.length === 0 && (
+                            <p className="text-sm text-muted-foreground">
+                                No se encontraron movimientos con estos filtros.
+                            </p>
+                        )}
+                    </>
                 )}
             </div>
         </section>

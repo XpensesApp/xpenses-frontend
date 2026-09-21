@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/Spinner";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { SubscriptionCard } from "@/features/subscriptions/components/SubscriptionCard";
 import { SubscriptionDialog } from "@/features/subscriptions/components/SubscriptionDialog";
@@ -10,9 +11,10 @@ import { SubscriptionDialog } from "@/features/subscriptions/components/Subscrip
 export default function SubscriptionsPage() {
     const { subscriptions, loadSubscriptions } = useSubscriptionsStore();
     const [createOpen, setCreateOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        loadSubscriptions();
+        loadSubscriptions().finally(() => setIsLoading(false));
     }, [loadSubscriptions]);
 
     return (
@@ -26,16 +28,22 @@ export default function SubscriptionsPage() {
                 </Button>
             </div>
 
-            <ul className="space-y-2">
-                {subscriptions.map(subscription => (
-                    <SubscriptionCard key={subscription.id} subscription={subscription} />
-                ))}
-            </ul>
+            {isLoading ? (
+                <Spinner />
+            ) : (
+                <>
+                    <ul className="space-y-2">
+                        {subscriptions.map(subscription => (
+                            <SubscriptionCard key={subscription.id} subscription={subscription} />
+                        ))}
+                    </ul>
 
-            {subscriptions.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                    Aún no has agregado suscripciones.
-                </p>
+                    {subscriptions.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                            Aún no has agregado suscripciones.
+                        </p>
+                    )}
+                </>
             )}
 
             <SubscriptionDialog

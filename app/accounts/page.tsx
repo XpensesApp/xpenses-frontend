@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/Spinner";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { usePaymentsStore } from "@/store/payments.store";
@@ -16,11 +17,12 @@ export default function AccountsPage() {
     const { transactions, loadTransactions } = useTransactionsStore();
     const { payments, loadPayments } = usePaymentsStore();
     const [createOpen, setCreateOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        loadAccounts();
-        loadTransactions();
-        loadPayments();
+        Promise.all([loadAccounts(), loadTransactions(), loadPayments()]).finally(() =>
+            setIsLoading(false)
+        );
     }, [loadAccounts, loadTransactions, loadPayments]);
 
     // Hidden when $0 so it doesn't show up as a confusing empty account by default.
@@ -44,16 +46,22 @@ export default function AccountsPage() {
                 </Button>
             </div>
 
-            <ul className="space-y-2">
-                {displayedAccounts.map(account => (
-                    <AccountCard key={account.id} account={account} />
-                ))}
-            </ul>
+            {isLoading ? (
+                <Spinner />
+            ) : (
+                <>
+                    <ul className="space-y-2">
+                        {displayedAccounts.map(account => (
+                            <AccountCard key={account.id} account={account} />
+                        ))}
+                    </ul>
 
-            {displayedAccounts.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                    Aún no has agregado cuentas.
-                </p>
+                    {displayedAccounts.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                            Aún no has agregado cuentas.
+                        </p>
+                    )}
+                </>
             )}
 
             <AccountDialog
