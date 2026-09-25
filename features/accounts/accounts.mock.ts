@@ -5,6 +5,7 @@ export const mockAccounts: Account[] = [
     id: "1",
     name: "Banco Estado ahorro vivienda",
     type: "debit",
+    isSavings: true,
   },
   {
     id: "2",

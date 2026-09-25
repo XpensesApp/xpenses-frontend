@@ -121,7 +121,7 @@ export default function MovementsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1 rounded-lg border p-4">
                     <span className="text-sm font-medium text-muted-foreground">
-                        Balance general
+                        Balance general (considera deuda)
                     </span>
                     <p
                         className={cn(
@@ -135,7 +135,7 @@ export default function MovementsPage() {
 
                 <div className="space-y-1 rounded-lg border p-4">
                     <span className="text-sm font-medium text-muted-foreground">
-                        Balance actual
+                        Balance actual (sin deuda)
                     </span>
                     <p
                         className={cn(
