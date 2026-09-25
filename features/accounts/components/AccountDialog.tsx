@@ -47,6 +47,7 @@ export function AccountDialog(props: Props) {
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("debit");
   const [paymentDay, setPaymentDay] = useState("");
+  const [isSavings, setIsSavings] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,10 +65,12 @@ export function AccountDialog(props: Props) {
       setPaymentDay(
         props.account.paymentDay ? String(props.account.paymentDay) : ""
       );
+      setIsSavings(!!props.account.isSavings);
     } else {
       setName("");
       setType("debit");
       setPaymentDay("");
+      setIsSavings(false);
     }
 
     setError(null);
@@ -105,6 +108,7 @@ export function AccountDialog(props: Props) {
           name: trimmedName,
           type,
           paymentDay: parsedPaymentDay,
+          isSavings: type === "credit" ? undefined : isSavings,
         });
       } else {
         await addAccount({
@@ -112,6 +116,7 @@ export function AccountDialog(props: Props) {
           name: trimmedName,
           type,
           paymentDay: parsedPaymentDay,
+          isSavings: type === "credit" ? undefined : isSavings,
         });
       }
 
@@ -169,13 +174,45 @@ export function AccountDialog(props: Props) {
                   type="button"
                   variant={type === option ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setType(option)}
+                  onClick={() => {
+                    setType(option);
+                    if (option === "credit") setIsSavings(false);
+                  }}
                 >
                   {accountTypeLabels[option]}
                 </Button>
               ))}
             </div>
           </div>
+
+          {type !== "credit" && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Cuenta de ahorro</label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={!isSavings ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsSavings(false)}
+                >
+                  No
+                </Button>
+                <Button
+                  type="button"
+                  variant={isSavings ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsSavings(true)}
+                >
+                  Sí
+                </Button>
+              </div>
+              {isSavings && (
+                <p className="text-xs text-muted-foreground">
+                  Su dinero no se contará en tu balance actual, solo en el balance general.
+                </p>
+              )}
+            </div>
+          )}
 
           {type === "credit" && (
             <div className="space-y-1">

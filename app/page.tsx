@@ -37,9 +37,9 @@ export default function MovementsPage() {
         );
     }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions]);
 
-    const { actualBalance, debt, generalBalance } = useMemo(() => {
-        return computeBalances(transactions, payments);
-    }, [transactions, payments]);
+    const { actualBalance, savings, debt, generalBalance } = useMemo(() => {
+        return computeBalances(transactions, payments, accounts);
+    }, [transactions, payments, accounts]);
 
     const categories = useMemo(() => {
         return Array.from(new Set(transactions.flatMap(t => t.categories)));
@@ -118,7 +118,7 @@ export default function MovementsPage() {
 
     return (
         <section className="p-6 space-y-8">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1 rounded-lg border p-4">
                     <span className="text-sm font-medium text-muted-foreground">
                         Balance general
@@ -144,6 +144,20 @@ export default function MovementsPage() {
                         )}
                     >
                         ${actualBalance.toLocaleString()}
+                    </p>
+                </div>
+
+                <div className="space-y-1 rounded-lg border p-4">
+                    <span className="text-sm font-medium text-muted-foreground">
+                        Ahorros
+                    </span>
+                    <p
+                        className={cn(
+                            "text-2xl font-semibold tabular-nums",
+                            savings < 0 ? "text-expense" : "text-income"
+                        )}
+                    >
+                        ${savings.toLocaleString()}
                     </p>
                 </div>
 

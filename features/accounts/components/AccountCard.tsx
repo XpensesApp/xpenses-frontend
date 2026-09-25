@@ -82,6 +82,11 @@ export function AccountCard({ account }: Props) {
                 {accountTypeLabels[account.type]}
               </span>
             )}
+            {account.isSavings && (
+              <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                Ahorro
+              </span>
+            )}
           </div>
           {account.paymentDay && (
             <span className="text-xs text-muted-foreground">

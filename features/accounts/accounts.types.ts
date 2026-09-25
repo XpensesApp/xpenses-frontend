@@ -9,6 +9,14 @@ export type Account = {
   /** Whether this is the account pre-selected when registering a new entry. */
   isDefault?: boolean;
   /**
+   * Marks this account's money as set aside rather than freely spendable.
+   * Transactions and payments linked to it are excluded from `actualBalance`
+   * and instead counted in `savings` (see `computeBalances`) — the account
+   * still tracks its own running balance normally, and transactions against
+   * it work exactly like any other account.
+   */
+  isSavings?: boolean;
+  /**
    * True only for the synthetic, built-in "untracked" account. Never persisted
    * through the accounts service or store — it's injected purely for display,
    * so it can't be edited, deleted, or set as default.

@@ -198,20 +198,42 @@ export function countRemainingInstallments(
 }
 
 /**
- * Splits tracked entries into "actual" (liquid) balance and outstanding
- * credit-card debt. Credit purchases don't reduce actual balance until
- * they're paid off; paying a card does, via its recorded payments.
+ * Splits tracked entries into "actual" (liquid, freely spendable) balance,
+ * money set aside in savings accounts, and outstanding credit-card debt.
+ * Credit purchases don't reduce actual balance until they're paid off;
+ * paying a card does, via its recorded payments. Anything linked to a
+ * savings account (`Account.isSavings`) is routed into `savings` instead of
+ * `actualBalance` — it's still yours, just not spendable — while
+ * `generalBalance` (true net worth) folds it back in.
  */
-export function computeBalances(transactions: Transaction[], payments: Payment[]) {
+export function computeBalances(
+  transactions: Transaction[],
+  payments: Payment[],
+  accounts: Account[]
+) {
+  const savingsAccountIds = new Set(
+    accounts.filter(a => a.isSavings).map(a => a.id)
+  );
+
   let actualBalance = 0;
+  let savings = 0;
 
   for (const transaction of transactions) {
     if (!transaction.affectsBalance || transaction.pending || transaction.paymentDay != null) continue;
-    actualBalance += signedAmount(transaction);
+    const amount = signedAmount(transaction);
+    if (transaction.accountId && savingsAccountIds.has(transaction.accountId)) {
+      savings += amount;
+    } else {
+      actualBalance += amount;
+    }
   }
 
   for (const payment of payments) {
-    actualBalance -= payment.amount;
+    if (payment.sourceAccountId && savingsAccountIds.has(payment.sourceAccountId)) {
+      savings -= payment.amount;
+    } else {
+      actualBalance -= payment.amount;
+    }
   }
 
   const cardAccountIds = new Set(
@@ -227,8 +249,9 @@ export function computeBalances(transactions: Transaction[], payments: Payment[]
 
   return {
     actualBalance,
+    savings,
     debt,
-    generalBalance: actualBalance - debt,
+    generalBalance: actualBalance + savings - debt,
   };
 }
 

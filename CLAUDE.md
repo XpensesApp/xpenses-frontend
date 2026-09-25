@@ -139,6 +139,8 @@ A credit account can also carry income entries (refunds), same payment-day snaps
 
 Accounts remain optional on every transaction. An entry with no account is "untracked" and is treated as a direct cash movement — this fallback must keep working as account-related features grow; do not make account selection required. `/accounts` represents all untracked entries as a synthetic, non-persisted "Untracked" account (`features/accounts/accounts.types.ts`'s `untrackedAccount`) so their net balance is visible the same way a real account's is; it's injected only for display (never created/edited/deleted through the accounts store) and only shown once its balance is non-zero.
 
+An account can be marked `isSavings` (mutually exclusive with `type === "credit"` — reset to `undefined` if the type is switched to credit). Its own balance (`computeAccountBalance`) is unaffected — it's tracked exactly like any other account, and transactions/payments against it work normally. The only difference is at the aggregate level: `computeBalances` routes anything linked to a savings account into a separate `savings` figure instead of `actualBalance`, so it's excluded from "money you can freely spend" while still counted in `generalBalance` (`actualBalance + savings - debt`, i.e. true net worth).
+
 ---
 
 ## 5. State Management
