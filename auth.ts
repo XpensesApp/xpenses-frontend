@@ -47,14 +47,25 @@ export const {
       return !!auth;
     },
     // `account` is only populated on the initial sign-in (not on later
-    // token refreshes), so this fires exactly once per login — provisioning
-    // the user's backend record via the same Cognito ID token every other
-    // backend call will use to authenticate. A failure here doesn't block
-    // sign-in: the backend's own auth is idempotent, so the next call
-    // (this one on the next login, or the backend's own auth middleware)
-    // can still provision the user later.
+    // token refreshes), so this block runs exactly once per login. It both
+    // provisions the user's backend record and persists the ID token onto
+    // the session's JWT, so client code (transactions/subscriptions
+    // services) can read it later via getSession()/useSession() to send as
+    // a Bearer token — the backend's CognitoAuthorizer requires one on every
+    // request now, and derives the caller's identity from it directly (no
+    // more `email` field on requests). A sync failure here doesn't block
+    // sign-in: the backend's own auth is idempotent, so the next call (this
+    // one on the next login, or the backend's own auth middleware) can
+    // still provision the user later.
+    //
+    // Caveat: this is the token from the moment of sign-in, not refreshed
+    // afterward — Cognito ID tokens are typically short-lived (~1h), while
+    // the app's own session lasts much longer, so API calls can start
+    // 401ing well before the user is prompted to sign in again. No refresh
+    // flow is implemented yet.
     async jwt({ token, account }) {
       if (account?.id_token) {
+        token.idToken = account.id_token;
         try {
           await fetch(process.env.AUTH_SYNC_API_BASE_URL!, {
             method: "POST",
@@ -65,6 +76,10 @@ export const {
         }
       }
       return token;
+    },
+    session({ session, token }) {
+      session.idToken = token.idToken;
+      return session;
     },
   },
 });

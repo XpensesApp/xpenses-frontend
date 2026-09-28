@@ -105,7 +105,7 @@ accounts.service
 in-memory mock data
 ```
 
-Both migrated backends are currently **unprotected**: requests identify whose data they touch via a plain `email` field (see `lib/current-email.ts`), not a JWT — a deliberate, temporary state until bearer-token auth is added. The service layer adapts each entity's wire shape (e.g. `transactionId` vs `id`, decimal-string amounts, `null` vs `undefined` for unset optionals) at the boundary, so the rest of the app keeps using its own established types.
+Both migrated backends are now protected by a Cognito Lambda Authorizer: every request needs `Authorization: Bearer <token>` (see `lib/current-auth-token.ts`, which reads the Cognito ID token `auth.ts` persisted onto the session at sign-in — see its `jwt`/`session` callbacks and `next-auth.d.ts`'s session type augmentation). The caller's identity is derived from the verified token, not sent as a field — request/response bodies no longer carry `email` at all. Known gap: the stored ID token isn't refreshed, so it can expire (~1h) well before the app's own session does, causing API calls to start 401ing without prompting a fresh sign-in — no refresh flow is implemented yet. The service layer adapts each entity's wire shape (e.g. `transactionId` vs `id`, decimal-string amounts, `null` vs `undefined` for unset optionals) at the boundary, so the rest of the app keeps using its own established types.
 
 ### Future backend
 

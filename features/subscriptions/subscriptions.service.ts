@@ -1,4 +1,4 @@
-import { getCurrentEmail } from "@/lib/current-email";
+import { getCurrentAuthToken, forceReauth } from "@/lib/current-auth-token";
 import { Subscription, SubscriptionStatus } from "./subscriptions.types";
 import { TransactionType } from "@/features/transactions/transactions.types";
 
@@ -22,7 +22,6 @@ const STATUS_FROM_WIRE: Record<WireStatus, SubscriptionStatus> = {
 };
 
 type WireSubscription = {
-  email: string;
   title: string;
   billingDay: number;
   type: TransactionType;
@@ -55,9 +54,8 @@ function fromWire(wire: WireSubscription): Subscription {
 
 // subscriptionId/createdAt are server-generated on create and aren't part of
 // the PUT body either, so this payload shape covers both create and update.
-function toWirePayload(subscription: Omit<Subscription, "id" | "createdAt">, email: string) {
+function toWirePayload(subscription: Omit<Subscription, "id" | "createdAt">) {
   return {
-    email,
     title: subscription.title,
     billingDay: subscription.billingDay,
     type: subscription.type,
@@ -69,38 +67,43 @@ function toWirePayload(subscription: Omit<Subscription, "id" | "createdAt">, ema
   };
 }
 
+async function authHeaders(): Promise<HeadersInit> {
+  const token = await getCurrentAuthToken();
+  return { Authorization: `Bearer ${token}` };
+}
+
 async function parseError(res: Response, fallback: string): Promise<never> {
+  // A locally-unexpired token can still be rejected server-side (clock skew,
+  // revocation) — treat any 401 the same as an expired token.
+  if (res.status === 401) forceReauth();
   const body = await res.json().catch(() => null);
   throw new Error(body?.message ?? fallback);
 }
 
 export const subscriptionsService = {
   getAll: async (): Promise<Subscription[]> => {
-    const email = await getCurrentEmail();
-    const res = await fetch(`${BASE_URL}?email=${encodeURIComponent(email)}`);
+    const res = await fetch(BASE_URL, { headers: await authHeaders() });
     if (!res.ok) return parseError(res, "Failed to load subscriptions");
     const data = await res.json();
     return (data.subscriptions as WireSubscription[]).map(fromWire);
   },
 
   create: async (subscription: Omit<Subscription, "id" | "createdAt">): Promise<Subscription> => {
-    const email = await getCurrentEmail();
     const res = await fetch(BASE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(toWirePayload(subscription, email)),
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify(toWirePayload(subscription)),
     });
     if (!res.ok) return parseError(res, "Failed to create subscription");
     return fromWire(await res.json());
   },
 
   update: async (subscription: Subscription): Promise<Subscription> => {
-    const email = await getCurrentEmail();
     const res = await fetch(BASE_URL, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({
-        ...toWirePayload(subscription, email),
+        ...toWirePayload(subscription),
         subscriptionId: subscription.id,
       }),
     });
@@ -109,9 +112,11 @@ export const subscriptionsService = {
   },
 
   delete: async (id: string): Promise<void> => {
-    const email = await getCurrentEmail();
-    const params = new URLSearchParams({ email, subscriptionId: id });
-    const res = await fetch(`${BASE_URL}?${params.toString()}`, { method: "DELETE" });
+    const params = new URLSearchParams({ subscriptionId: id });
+    const res = await fetch(`${BASE_URL}?${params.toString()}`, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
     if (!res.ok) return parseError(res, "Failed to delete subscription");
   },
 };
