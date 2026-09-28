@@ -2,6 +2,7 @@ import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";
 import { Navbar } from "@/components/Navbar";
+import { SessionWatcher } from "@/components/SessionWatcher";
 
 export const metadata = {
   title: "Xpenses",
@@ -26,6 +27,7 @@ export default async function RootLayout({
       </head>
       <body>
         <SessionProvider session={session}>
+          <SessionWatcher />
           <Navbar />
           {children}
         </SessionProvider>

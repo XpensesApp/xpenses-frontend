@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { SlidersHorizontalIcon } from "lucide-react";
+import { Loader2Icon, SlidersHorizontalIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/Spinner";
 import { useTransactionsStore } from "@/store/transactions.store";
@@ -119,61 +119,30 @@ export default function MovementsPage() {
     return (
         <section className="p-6 space-y-8">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1 rounded-lg border p-4">
-                    <span className="text-sm font-medium text-muted-foreground">
-                        Balance general (considera deuda)
-                    </span>
-                    <p
-                        className={cn(
-                            "text-2xl font-semibold tabular-nums",
-                            generalBalance < 0 ? "text-expense" : "text-income"
-                        )}
-                    >
-                        ${generalBalance.toLocaleString()}
-                    </p>
-                </div>
-
-                <div className="space-y-1 rounded-lg border p-4">
-                    <span className="text-sm font-medium text-muted-foreground">
-                        Balance actual (sin deuda)
-                    </span>
-                    <p
-                        className={cn(
-                            "text-2xl font-semibold tabular-nums",
-                            actualBalance < 0 ? "text-expense" : "text-income"
-                        )}
-                    >
-                        ${actualBalance.toLocaleString()}
-                    </p>
-                </div>
-
-                <div className="space-y-1 rounded-lg border p-4">
-                    <span className="text-sm font-medium text-muted-foreground">
-                        Ahorros
-                    </span>
-                    <p
-                        className={cn(
-                            "text-2xl font-semibold tabular-nums",
-                            savings < 0 ? "text-expense" : "text-income"
-                        )}
-                    >
-                        ${savings.toLocaleString()}
-                    </p>
-                </div>
-
-                <div className="space-y-1 rounded-lg border p-4">
-                    <span className="text-sm font-medium text-muted-foreground">
-                        Deuda pendiente
-                    </span>
-                    <p
-                        className={cn(
-                            "text-2xl font-semibold tabular-nums",
-                            debt > 0 ? "text-expense" : "text-income"
-                        )}
-                    >
-                        ${debt.toLocaleString()}
-                    </p>
-                </div>
+                <BalanceTile
+                    label="Balance general (considera deuda)"
+                    value={generalBalance}
+                    isLoading={isLoading}
+                    isNegative={generalBalance < 0}
+                />
+                <BalanceTile
+                    label="Balance actual (sin deuda)"
+                    value={actualBalance}
+                    isLoading={isLoading}
+                    isNegative={actualBalance < 0}
+                />
+                <BalanceTile
+                    label="Ahorros"
+                    value={savings}
+                    isLoading={isLoading}
+                    isNegative={savings < 0}
+                />
+                <BalanceTile
+                    label="Deuda pendiente"
+                    value={debt}
+                    isLoading={isLoading}
+                    isNegative={debt > 0}
+                />
             </div>
 
             <UpcomingCardPayments />
@@ -234,5 +203,35 @@ export default function MovementsPage() {
                 )}
             </div>
         </section>
+    );
+}
+
+function BalanceTile({
+    label,
+    value,
+    isLoading,
+    isNegative,
+}: {
+    label: string;
+    value: number;
+    isLoading: boolean;
+    isNegative: boolean;
+}) {
+    return (
+        <div className="space-y-1 rounded-lg border p-4">
+            <span className="text-sm font-medium text-muted-foreground">{label}</span>
+            {isLoading ? (
+                <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+            ) : (
+                <p
+                    className={cn(
+                        "text-2xl font-semibold tabular-nums",
+                        isNegative ? "text-expense" : "text-income"
+                    )}
+                >
+                    ${value.toLocaleString()}
+                </p>
+            )}
+        </div>
     );
 }

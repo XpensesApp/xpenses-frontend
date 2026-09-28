@@ -13,7 +13,7 @@ import { getSession } from "next-auth/react";
 // setting) while the app's own session lasts much longer, so every call
 // below re-checks expiry against the cached value rather than trusting it
 // forever.
-let cachedToken: Promise<string> | null = null;
+let cachedToken: Promise<string | undefined> | null = null;
 
 /** Cognito ID tokens are JWTs; decoding (not verifying) the payload locally is enough to read `exp` — the backend still verifies the signature on every request. */
 function isExpired(token: string): boolean {
@@ -36,12 +36,12 @@ export function forceReauth(): never {
 
 export async function getCurrentAuthToken(): Promise<string> {
   if (!cachedToken) {
+    // Only a genuine failure to reach /api/auth/session (network blip) resets
+    // the cache for a retry — a session that resolves without an idToken is a
+    // real "not usable" outcome, not a transient one, so it falls through to
+    // the same forced-reauth path as an expired token below.
     cachedToken = getSession()
-      .then(session => {
-        const token = session?.idToken;
-        if (!token) throw new Error("No authenticated session token available.");
-        return token;
-      })
+      .then(session => session?.idToken)
       .catch(error => {
         cachedToken = null;
         throw error;
@@ -49,6 +49,6 @@ export async function getCurrentAuthToken(): Promise<string> {
   }
 
   const token = await cachedToken;
-  if (isExpired(token)) forceReauth();
+  if (!token || isExpired(token)) forceReauth();
   return token;
 }
