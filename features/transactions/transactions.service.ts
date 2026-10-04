@@ -14,6 +14,7 @@ type WireTransaction = {
   transactionId: string;
   sk: string;
   accountId: string | null;
+  targetAccountId: string | null;
   installments: number | null;
   paymentDay: number | null;
   subscriptionId: string | null;
@@ -31,6 +32,7 @@ function fromWire(wire: WireTransaction): Transaction {
     affectsBalance: wire.affectsBalance,
     pending: wire.pending,
     accountId: wire.accountId ?? undefined,
+    targetAccountId: wire.targetAccountId ?? undefined,
     installments: wire.installments ?? undefined,
     paymentDay: wire.paymentDay ?? undefined,
     subscriptionId: wire.subscriptionId ?? undefined,
@@ -51,6 +53,7 @@ function toWirePayload(transaction: Omit<Transaction, "id">) {
     affectsBalance: transaction.affectsBalance,
     pending: transaction.pending,
     accountId: transaction.accountId ?? null,
+    targetAccountId: transaction.targetAccountId ?? null,
     installments: transaction.installments ?? null,
     paymentDay: transaction.paymentDay ?? null,
     subscriptionId: transaction.subscriptionId ?? null,

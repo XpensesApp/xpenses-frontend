@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/MoneyInput";
 import {
   Dialog,
   DialogContent,
@@ -135,21 +136,7 @@ export function AccountPaymentDialog({
         {mode === "partial" && (
           <div className="space-y-1">
             <label className="text-sm font-medium">Monto a pagar</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground">
-                $
-              </span>
-              <Input
-                type="number"
-                min="0"
-                step="1"
-                inputMode="decimal"
-                value={partialAmount}
-                onChange={e => setPartialAmount(e.target.value)}
-                className="pl-6"
-                autoFocus
-              />
-            </div>
+            <MoneyInput value={partialAmount} onChange={setPartialAmount} autoFocus />
           </div>
         )}
 

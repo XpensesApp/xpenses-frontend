@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/MoneyInput";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,8 @@ const NO_ACCOUNT = "none";
 type CreateProps = {
   mode: "create";
   initialTitle?: string;
+  /** Pre-selects the type when the dialog opens — e.g. the Accounts page's "Transferir" button opens straight into transfer mode instead of making the user switch to it. Defaults to "expense". */
+  initialType?: TransactionType;
 };
 
 type EditProps = {
@@ -57,6 +60,7 @@ export function TransactionDialog(props: Props) {
   const [date, setDate] = useState(nowLocalDateTime());
   const [affectsBalance, setAffectsBalance] = useState(true);
   const [accountId, setAccountId] = useState(NO_ACCOUNT);
+  const [targetAccountId, setTargetAccountId] = useState(NO_ACCOUNT);
   const [useInstallments, setUseInstallments] = useState(false);
   const [installments, setInstallments] = useState("");
 
@@ -71,6 +75,12 @@ export function TransactionDialog(props: Props) {
   const isCreditSelected = selectedAccount?.type === "credit";
   const isPaying = props.mode === "edit" && props.transaction.pending;
   const installmentsApply = isCreditSelected && type === "expense";
+  const isTransfer = type === "transfer";
+  // Credit accounts track debt, not spendable money — paying/charging one
+  // already has its own dedicated flow (AccountPaymentDialog), so they're
+  // excluded here rather than half-supporting a transfer that wouldn't
+  // actually move the card's debt.
+  const transferableAccounts = accounts.filter(a => a.type !== "credit");
 
   function addCategory(value: string) {
     const trimmed = value.trim();
@@ -100,10 +110,11 @@ export function TransactionDialog(props: Props) {
           ? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT
           : transaction.accountId ?? NO_ACCOUNT
       );
+      setTargetAccountId(transaction.targetAccountId ?? NO_ACCOUNT);
       setUseInstallments(!!transaction.installments);
       setInstallments(transaction.installments ? String(transaction.installments) : "");
     } else {
-      setType("expense");
+      setType(props.initialType ?? "expense");
       setTitle(props.initialTitle?.trim() ?? "");
       setAmount("");
       setCategories([]);
@@ -111,6 +122,7 @@ export function TransactionDialog(props: Props) {
       setDate(nowLocalDateTime());
       setAffectsBalance(true);
       setAccountId(accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT);
+      setTargetAccountId(NO_ACCOUNT);
       setUseInstallments(false);
       setInstallments("");
     }
@@ -145,27 +157,47 @@ export function TransactionDialog(props: Props) {
       return;
     }
 
+    if (isTransfer) {
+      if (accountId === NO_ACCOUNT) {
+        setError("Selecciona una cuenta de origen.");
+        return;
+      }
+      if (targetAccountId === NO_ACCOUNT) {
+        setError("Selecciona una cuenta de destino.");
+        return;
+      }
+      if (accountId === targetAccountId) {
+        setError("La cuenta de origen y destino deben ser diferentes.");
+        return;
+      }
+    }
+
     const accountUnchanged =
       props.mode === "edit" &&
       !isPaying &&
       accountId === (props.transaction.accountId ?? NO_ACCOUNT);
 
-    if (!accountUnchanged && isCreditSelected && selectedAccount?.paymentDay == null) {
+    if (!isTransfer && !accountUnchanged && isCreditSelected && selectedAccount?.paymentDay == null) {
       setError("Esta tarjeta no tiene día de pago configurado. Edítala en Cuentas antes de usarla.");
       return;
     }
 
     const resolvedAccountId = accountId === NO_ACCOUNT ? undefined : accountId;
+    const resolvedTargetAccountId =
+      isTransfer && targetAccountId !== NO_ACCOUNT ? targetAccountId : undefined;
     const resolvedInstallments =
       installmentsApply && useInstallments ? parsedInstallments : undefined;
     const pendingCategory = categoryInput.trim();
-    const resolvedCategories =
-      pendingCategory && !categories.includes(pendingCategory)
+    const resolvedCategories = isTransfer
+      ? []
+      : pendingCategory && !categories.includes(pendingCategory)
         ? [...categories, pendingCategory]
         : categories;
 
     let resolvedPaymentDay: number | undefined;
-    if (props.mode === "edit" && accountUnchanged) {
+    if (isTransfer) {
+      resolvedPaymentDay = undefined;
+    } else if (props.mode === "edit" && accountUnchanged) {
       resolvedPaymentDay = props.transaction.paymentDay;
     } else {
       resolvedPaymentDay = isCreditSelected ? selectedAccount?.paymentDay : undefined;
@@ -185,6 +217,7 @@ export function TransactionDialog(props: Props) {
           date,
           affectsBalance,
           accountId: resolvedAccountId,
+          targetAccountId: resolvedTargetAccountId,
           installments: resolvedInstallments,
           paymentDay: resolvedPaymentDay,
           pending: false,
@@ -198,6 +231,7 @@ export function TransactionDialog(props: Props) {
           date,
           affectsBalance,
           accountId: resolvedAccountId,
+          targetAccountId: resolvedTargetAccountId,
           installments: resolvedInstallments,
           paymentDay: resolvedPaymentDay,
           pending: false,
@@ -237,8 +271,12 @@ export function TransactionDialog(props: Props) {
             {props.mode === "edit"
               ? isPaying
                 ? "Pagar suscripción"
-                : "Editar movimiento"
-              : "Nuevo movimiento"}
+                : isTransfer
+                  ? "Editar transferencia"
+                  : "Editar movimiento"
+              : isTransfer
+                ? "Nueva transferencia"
+                : "Nuevo movimiento"}
           </DialogTitle>
         </DialogHeader>
 
@@ -262,6 +300,24 @@ export function TransactionDialog(props: Props) {
               >
                 Ingreso
               </Button>
+              <Button
+                type="button"
+                variant={type === "transfer" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setType("transfer");
+                  // A credit account can't be a transfer's source (it tracks
+                  // debt, not spendable money) — clear it rather than leave a
+                  // now-invalid, hidden-from-the-dropdown selection in place.
+                  if (isCreditSelected) {
+                    setAccountId(NO_ACCOUNT);
+                    setUseInstallments(false);
+                    setInstallments("");
+                  }
+                }}
+              >
+                Transferencia
+              </Button>
             </div>
             {isCreditSelected && type === "income" && (
               <p className="text-xs text-muted-foreground">
@@ -277,60 +333,52 @@ export function TransactionDialog(props: Props) {
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Precio</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground">
-                $
-              </span>
-              <Input
-                ref={amountRef}
-                type="number"
-                min="0"
-                step="1"
-                inputMode="decimal"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") handleSave();
-                }}
-                className="pl-6 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:[-webkit-appearance:none] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:[-webkit-appearance:none]"
-              />
-            </div>
+            <MoneyInput
+              ref={amountRef}
+              value={amount}
+              onChange={setAmount}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleSave();
+              }}
+            />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Categorías (opcional)</label>
-            <Input
-              value={categoryInput}
-              onChange={e => setCategoryInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" || e.key === ",") {
-                  e.preventDefault();
-                  addCategory(categoryInput);
-                }
-              }}
-              placeholder="Escribe y presiona Enter"
-            />
-            {categories.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {categories.map(cat => (
-                  <span
-                    key={cat}
-                    className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
-                  >
-                    {cat}
-                    <button
-                      type="button"
-                      onClick={() => removeCategory(cat)}
-                      aria-label={`Quitar categoría ${cat}`}
-                      className="hover:text-foreground"
+          {!isTransfer && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Categorías (opcional)</label>
+              <Input
+                value={categoryInput}
+                onChange={e => setCategoryInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addCategory(categoryInput);
+                  }
+                }}
+                placeholder="Escribe y presiona Enter"
+              />
+              {categories.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {categories.map(cat => (
+                    <span
+                      key={cat}
+                      className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
                     >
-                      <XIcon className="size-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+                      {cat}
+                      <button
+                        type="button"
+                        onClick={() => removeCategory(cat)}
+                        aria-label={`Quitar categoría ${cat}`}
+                        className="hover:text-foreground"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Fecha y hora</label>
@@ -365,7 +413,9 @@ export function TransactionDialog(props: Props) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Cuenta (opcional)</label>
+            <label className="text-sm font-medium">
+              {isTransfer ? "Cuenta origen" : "Cuenta (opcional)"}
+            </label>
             <Select
               value={accountId}
               onValueChange={value => {
@@ -378,8 +428,8 @@ export function TransactionDialog(props: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_ACCOUNT}>Sin cuenta</SelectItem>
-                {accounts.map(account => (
+                {!isTransfer && <SelectItem value={NO_ACCOUNT}>Sin cuenta</SelectItem>}
+                {(isTransfer ? transferableAccounts : accounts).map(account => (
                   <SelectItem key={account.id} value={account.id}>
                     {account.name}
                   </SelectItem>
@@ -387,6 +437,26 @@ export function TransactionDialog(props: Props) {
               </SelectContent>
             </Select>
           </div>
+
+          {isTransfer && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Cuenta destino</label>
+              <Select value={targetAccountId} onValueChange={setTargetAccountId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecciona una cuenta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {transferableAccounts
+                    .filter(account => account.id !== accountId)
+                    .map(account => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {installmentsApply && (
             <div className="space-y-1">

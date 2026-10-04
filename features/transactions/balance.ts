@@ -220,6 +220,24 @@ export function computeBalances(
 
   for (const transaction of transactions) {
     if (!transaction.affectsBalance || transaction.pending || transaction.paymentDay != null) continue;
+
+    // A transfer is an outflow for its source and an inflow for its target —
+    // each side lands in whichever bucket (actual/savings) that account
+    // belongs to, so e.g. a transfer into a savings account correctly moves
+    // money out of actualBalance and into savings rather than netting to
+    // zero within a single bucket.
+    if (transaction.type === "transfer") {
+      if (transaction.accountId) {
+        if (savingsAccountIds.has(transaction.accountId)) savings -= transaction.amount;
+        else actualBalance -= transaction.amount;
+      }
+      if (transaction.targetAccountId) {
+        if (savingsAccountIds.has(transaction.targetAccountId)) savings += transaction.amount;
+        else actualBalance += transaction.amount;
+      }
+      continue;
+    }
+
     const amount = signedAmount(transaction);
     if (transaction.accountId && savingsAccountIds.has(transaction.accountId)) {
       savings += amount;
@@ -269,13 +287,24 @@ export function computeAccountBalance(
     ? (id: string | undefined) => !id
     : (id: string | undefined) => id === account.id;
 
-  const spent = transactions
-    .filter(t => t.affectsBalance && !t.pending && matches(t.accountId))
-    .reduce((total, t) => total + signedAmount(t), 0);
+  let net = 0;
+  for (const t of transactions) {
+    if (!t.affectsBalance || t.pending) continue;
+    if (t.type === "transfer") {
+      // A transfer touches two accounts in one record, so it's checked
+      // against both sides rather than the single accountId every other
+      // type uses — matches() on just t.accountId would miss this account
+      // entirely whenever it's the target.
+      if (matches(t.accountId)) net -= t.amount;
+      if (matches(t.targetAccountId)) net += t.amount;
+    } else if (matches(t.accountId)) {
+      net += signedAmount(t);
+    }
+  }
 
   const paidOut = payments
     .filter(p => matches(p.sourceAccountId))
     .reduce((total, p) => total + p.amount, 0);
 
-  return spent - paidOut;
+  return net - paidOut;
 }

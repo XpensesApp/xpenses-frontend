@@ -59,7 +59,11 @@ export default function MovementsPage() {
             if (filters.category && !transaction.categories.includes(filters.category)) {
                 return false;
             }
-            if (filters.account && transaction.accountId !== filters.account) {
+            if (
+                filters.account &&
+                transaction.accountId !== filters.account &&
+                transaction.targetAccountId !== filters.account
+            ) {
                 return false;
             }
             return true;

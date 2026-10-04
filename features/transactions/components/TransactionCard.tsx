@@ -22,8 +22,12 @@ const MAX_VISIBLE_CATEGORIES = 3;
 export function TransactionCard({ transaction }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const isIncome = transaction.type === "income";
+  const isTransfer = transaction.type === "transfer";
   const account = useAccountsStore(state =>
     state.accounts.find(a => a.id === transaction.accountId)
+  );
+  const targetAccount = useAccountsStore(state =>
+    state.accounts.find(a => a.id === transaction.targetAccountId)
   );
   const subscription = useSubscriptionsStore(state =>
     state.subscriptions.find(s => s.id === transaction.subscriptionId)
@@ -60,10 +64,16 @@ export function TransactionCard({ transaction }: Props) {
                 +{hiddenCategories.length}
               </span>
             )}
-            {account && (
+            {isTransfer ? (
               <span className="shrink-0 text-xs text-muted-foreground">
-                {account.name}
+                {account?.name ?? "?"} → {targetAccount?.name ?? "?"}
               </span>
+            ) : (
+              account && (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {account.name}
+                </span>
+              )
             )}
             {isCreditPurchase && transaction.installments && installmentProgress && (
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
@@ -105,6 +115,11 @@ export function TransactionCard({ transaction }: Props) {
             {transaction.amount === 0
               ? "Por definir"
               : `${isIncome ? "+" : "-"}$${transaction.amount.toLocaleString()}`}
+          </span>
+        ) : isTransfer ? (
+          // Neither a gain nor a loss overall — no sign, no income/expense color.
+          <span className="shrink-0 font-medium tabular-nums">
+            ${transaction.amount.toLocaleString()}
           </span>
         ) : (
           <span

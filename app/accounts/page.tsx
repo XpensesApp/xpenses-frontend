@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PlusIcon } from "lucide-react";
+import { ArrowLeftRightIcon, PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/Spinner";
 import { useAccountsStore } from "@/store/accounts.store";
@@ -11,12 +11,14 @@ import { untrackedAccount } from "@/features/accounts/accounts.types";
 import { computeAccountBalance } from "@/features/transactions/balance";
 import { AccountCard } from "@/features/accounts/components/AccountCard";
 import { AccountDialog } from "@/features/accounts/components/AccountDialog";
+import { TransactionDialog } from "@/features/transactions/components/TransactionDialog";
 
 export default function AccountsPage() {
     const { accounts, loadAccounts } = useAccountsStore();
     const { transactions, loadTransactions } = useTransactionsStore();
     const { payments, loadPayments } = usePaymentsStore();
     const [createOpen, setCreateOpen] = useState(false);
+    const [transferOpen, setTransferOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -40,10 +42,16 @@ export default function AccountsPage() {
             <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Cuentas</h2>
 
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                    <PlusIcon />
-                    Agregar cuenta
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
+                        <ArrowLeftRightIcon />
+                        Transferir
+                    </Button>
+                    <Button size="sm" onClick={() => setCreateOpen(true)}>
+                        <PlusIcon />
+                        Agregar cuenta
+                    </Button>
+                </div>
             </div>
 
             {isLoading ? (
@@ -68,6 +76,13 @@ export default function AccountsPage() {
                 mode="create"
                 open={createOpen}
                 onOpenChange={setCreateOpen}
+            />
+
+            <TransactionDialog
+                mode="create"
+                initialType="transfer"
+                open={transferOpen}
+                onOpenChange={setTransferOpen}
             />
         </section>
     );

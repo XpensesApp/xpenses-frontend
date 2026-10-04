@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/MoneyInput";
 import {
   Dialog,
   DialogContent,
@@ -229,20 +230,7 @@ export function SubscriptionDialog(props: Props) {
                 Variable
               </Button>
               {hasFixedAmount ? (
-                <div className="relative">
-                  <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground">
-                    $
-                  </span>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="decimal"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    className="w-40 pl-6"
-                  />
-                </div>
+                <MoneyInput value={amount} onChange={setAmount} className="w-40" />
               ) : (
                 <span className="text-xs text-muted-foreground">
                   Ingresarás el monto cada vez que pagues.

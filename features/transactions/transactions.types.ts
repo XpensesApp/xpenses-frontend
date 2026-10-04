@@ -1,4 +1,4 @@
-export type TransactionType = "expense" | "income";
+export type TransactionType = "expense" | "income" | "transfer";
 
 export type Transaction = {
   id: string;
@@ -10,8 +10,10 @@ export type Transaction = {
   type: TransactionType;
   /** Whether this entry affects the balance total, or is only referencial. Defaults to true. */
   affectsBalance: boolean;
-  /** Account this entry is charged to. Undefined means untracked (no account). */
+  /** Account this entry is charged to. Undefined means untracked (no account). For a transfer, this is the source account — required, never untracked. */
   accountId?: string;
+  /** The destination account for a transfer. Required (and must differ from accountId) when type is "transfer"; undefined for every other type. */
+  targetAccountId?: string;
   /** Number of installments ("cuotas") this entry is split into. Only relevant for credit purchases. */
   installments?: number;
   /**
