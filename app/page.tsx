@@ -21,7 +21,8 @@ import {
 } from "@/features/transactions/components/TransactionFilters";
 
 export default function MovementsPage() {
-    const { transactions, loadTransactions } = useTransactionsStore();
+    const { transactions, loadTransactions, loadMoreTransactions, hasMore, isLoadingMore } =
+        useTransactionsStore();
     const { accounts, loadAccounts } = useAccountsStore();
     const { loadSubscriptions } = useSubscriptionsStore();
     const { payments, loadPayments } = usePaymentsStore();
@@ -32,9 +33,12 @@ export default function MovementsPage() {
         filters.search !== "" || filters.category !== "" || filters.account !== "";
 
     useEffect(() => {
-        Promise.all([loadTransactions(), loadAccounts(), loadPayments(), loadSubscriptions()]).finally(
-            () => setIsLoading(false)
-        );
+        Promise.all([
+            loadTransactions(),
+            loadAccounts(),
+            loadPayments(),
+            loadSubscriptions(),
+        ]).finally(() => setIsLoading(false));
     }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions]);
 
     const { actualBalance, savings, debt, generalBalance } = useMemo(() => {
@@ -202,6 +206,20 @@ export default function MovementsPage() {
                             <p className="text-sm text-muted-foreground">
                                 No se encontraron movimientos con estos filtros.
                             </p>
+                        )}
+
+                        {hasMore && (
+                            <div className="flex justify-center pt-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={isLoadingMore}
+                                    onClick={() => loadMoreTransactions()}
+                                >
+                                    {isLoadingMore && <Loader2Icon className="animate-spin" />}
+                                    Cargar más movimientos
+                                </Button>
+                            </div>
                         )}
                     </>
                 )}

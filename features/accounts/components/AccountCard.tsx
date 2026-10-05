@@ -5,7 +5,6 @@ import { CreditCardIcon, PencilIcon, StarIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useAccountsStore } from "@/store/accounts.store";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { usePaymentsStore } from "@/store/payments.store";
 import {
@@ -38,7 +37,6 @@ export function AccountCard({ account }: Props) {
   const [payOpen, setPayOpen] = useState(false);
   const transactions = useTransactionsStore(state => state.transactions);
   const payments = usePaymentsStore(state => state.payments);
-  const setDefaultAccount = useAccountsStore(state => state.setDefaultAccount);
   const addPayment = usePaymentsStore(state => state.addPayment);
 
   const balance = computeAccountBalance(account, transactions, payments);
@@ -59,24 +57,15 @@ export function AccountCard({ account }: Props) {
   return (
     <Card className="py-0">
       <CardContent className="flex items-center gap-3 px-3 py-2">
-        {!account.isUntracked && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={
-              account.isDefault ? "Quitar cuenta por defecto" : "Marcar como cuenta por defecto"
-            }
-            onClick={() => setDefaultAccount(account.id)}
-          >
-            <StarIcon
-              className={cn(account.isDefault && "fill-current text-amber-500")}
-            />
-          </Button>
-        )}
-
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="truncate font-medium">{account.name}</span>
+            {account.isDefault && (
+              <StarIcon
+                aria-label="Cuenta por defecto"
+                className="size-3.5 shrink-0 fill-current text-amber-500"
+              />
+            )}
             {!account.isUntracked && (
               <span className="shrink-0 text-xs text-muted-foreground">
                 {accountTypeLabels[account.type]}

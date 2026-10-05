@@ -8,6 +8,12 @@ export function toISODate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+/** Shifts a bare "YYYY-MM-DD" date by `days` (negative to go backward), e.g. for walking a paginated date range one day/month at a time. */
+export function addDays(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return toISODate(new Date(year, month - 1, day + days));
+}
+
 /** Identifies a billing/due period, e.g. "2026-09". */
 export function periodKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;

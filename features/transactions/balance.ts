@@ -1,5 +1,5 @@
 import { Transaction } from "./transactions.types";
-import { Account } from "@/features/accounts/accounts.types";
+import { Account, untrackedAccount } from "@/features/accounts/accounts.types";
 import { Payment } from "@/features/payments/payments.types";
 import { clampDayToMonth, periodKey } from "@/lib/dates";
 
@@ -205,65 +205,34 @@ export function countRemainingInstallments(
  * savings account (`Account.isSavings`) is routed into `savings` instead of
  * `actualBalance` — it's still yours, just not spendable — while
  * `generalBalance` (true net worth) folds it back in.
+ *
+ * Each known account's contribution comes from its own `balance` (the
+ * backend's running total — see `computeAccountBalance`) instead of summing
+ * `transactions`. Entries with no linked account at all ("untracked") have
+ * no backend equivalent, so they're always summed directly from
+ * `transactions`.
  */
 export function computeBalances(
   transactions: Transaction[],
   payments: Payment[],
   accounts: Account[]
 ) {
-  const savingsAccountIds = new Set(
-    accounts.filter(a => a.isSavings).map(a => a.id)
-  );
-
   let actualBalance = 0;
   let savings = 0;
-
-  for (const transaction of transactions) {
-    if (!transaction.affectsBalance || transaction.pending || transaction.paymentDay != null) continue;
-
-    // A transfer is an outflow for its source and an inflow for its target —
-    // each side lands in whichever bucket (actual/savings) that account
-    // belongs to, so e.g. a transfer into a savings account correctly moves
-    // money out of actualBalance and into savings rather than netting to
-    // zero within a single bucket.
-    if (transaction.type === "transfer") {
-      if (transaction.accountId) {
-        if (savingsAccountIds.has(transaction.accountId)) savings -= transaction.amount;
-        else actualBalance -= transaction.amount;
-      }
-      if (transaction.targetAccountId) {
-        if (savingsAccountIds.has(transaction.targetAccountId)) savings += transaction.amount;
-        else actualBalance += transaction.amount;
-      }
-      continue;
-    }
-
-    const amount = signedAmount(transaction);
-    if (transaction.accountId && savingsAccountIds.has(transaction.accountId)) {
-      savings += amount;
-    } else {
-      actualBalance += amount;
-    }
-  }
-
-  for (const payment of payments) {
-    if (payment.sourceAccountId && savingsAccountIds.has(payment.sourceAccountId)) {
-      savings -= payment.amount;
-    } else {
-      actualBalance -= payment.amount;
-    }
-  }
-
-  const cardAccountIds = new Set(
-    transactions
-      .filter((t): t is Transaction & { accountId: string } => t.paymentDay != null && !!t.accountId)
-      .map(t => t.accountId)
-  );
-
   let debt = 0;
-  for (const cardAccountId of cardAccountIds) {
-    debt += computeCardDebt(cardAccountId, transactions, payments);
+
+  for (const account of accounts) {
+    const balance = computeAccountBalance(account, transactions, payments);
+    if (account.type === "credit") {
+      debt += balance;
+    } else if (account.isSavings) {
+      savings += balance;
+    } else {
+      actualBalance += balance;
+    }
   }
+
+  actualBalance += computeAccountBalance(untrackedAccount, transactions, payments);
 
   return {
     actualBalance,
@@ -273,19 +242,50 @@ export function computeBalances(
   };
 }
 
-/** Balance for a single account: card debt for credit accounts, net cash movement (spending minus payments made from it) otherwise. The synthetic untracked account matches entries with no linked account at all, rather than a specific id. */
+/**
+ * Balance for a single account: card debt for credit accounts, net cash
+ * movement (spending minus payments made from it) otherwise. The synthetic
+ * untracked account matches entries with no linked account at all, rather
+ * than a specific id.
+ *
+ * `account.balance`, when present, is the server's own running total of
+ * this account's transactions (`GET`/`POST`/`PUT /accounts`) — it's used in
+ * place of summing `transactions` so the result stays correct even when
+ * only part of this account's history has been loaded (transactions are
+ * paginated by date range). Payments are a separate, still-local-only
+ * entity the backend doesn't know about, so they're always applied on top
+ * regardless. Falls back to summing `transactions` entirely when there's no
+ * backend balance — true only for the synthetic untracked account, which
+ * has no backend record at all.
+ */
 export function computeAccountBalance(
   account: Account,
   transactions: Transaction[],
   payments: Payment[]
 ): number {
   if (account.type === "credit") {
-    return computeCardDebt(account.id, transactions, payments);
+    if (account.balance === undefined) {
+      return computeCardDebt(account.id, transactions, payments);
+    }
+    const paidOut = payments
+      .filter(p => p.cardAccountId === account.id)
+      .reduce((total, p) => total + p.amount, 0);
+    // account.balance is -purchases + refunds (no payments); debt is
+    // whatever of that isn't yet covered by payments, floored at 0.
+    return Math.max(0, -account.balance - paidOut);
   }
 
   const matches = account.isUntracked
     ? (id: string | undefined) => !id
     : (id: string | undefined) => id === account.id;
+
+  const paidOut = payments
+    .filter(p => matches(p.sourceAccountId))
+    .reduce((total, p) => total + p.amount, 0);
+
+  if (account.balance !== undefined) {
+    return account.balance - paidOut;
+  }
 
   let net = 0;
   for (const t of transactions) {
@@ -301,10 +301,6 @@ export function computeAccountBalance(
       net += signedAmount(t);
     }
   }
-
-  const paidOut = payments
-    .filter(p => matches(p.sourceAccountId))
-    .reduce((total, p) => total + p.amount, 0);
 
   return net - paidOut;
 }

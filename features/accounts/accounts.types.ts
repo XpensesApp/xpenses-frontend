@@ -6,7 +6,12 @@ export type Account = {
   type: AccountType;
   /** Day of the month payment is due. Only relevant for account types that require it (e.g. credit). */
   paymentDay?: number;
-  /** Whether this is the account pre-selected when registering a new entry. */
+  /**
+   * True for the backend's one fixed per-user default account (`accountId:
+   * "default"`, created by `POST /auth/sync` on login) — a transaction that
+   * omits `accountId` lands here. Not settable from the frontend; there's no
+   * API to change which account is the default, only to rename it.
+   */
   isDefault?: boolean;
   /**
    * Marks this account's money as set aside rather than freely spendable.
@@ -22,6 +27,19 @@ export type Account = {
    * so it can't be edited, deleted, or set as default.
    */
   isUntracked?: boolean;
+  /**
+   * Backend-maintained running balance (`GET`/`POST`/`PUT /accounts`),
+   * already parsed from its decimal-string wire form — kept up to date
+   * server-side on every transaction write, so it's correct even when not
+   * all of this account's transactions are loaded locally. Undefined only
+   * for the synthetic untracked account, which has no backend record;
+   * `computeAccountBalance` falls back to summing transactions in that case.
+   */
+  balance?: number;
+  /** The balance this account started at before any tracked transaction — editable via `AccountDialog` to reconcile `balance` with a real bank balance. */
+  openingBalance?: number;
+  /** How many transactions currently reference this account. The backend refuses to delete an account while this is > 0. */
+  transactionCount?: number;
 };
 
 export const UNTRACKED_ACCOUNT_ID = "untracked";

@@ -1,75 +1,191 @@
-# Handoff: Accounts, Subscriptions, and Credit Card Debt Model
+# Handoff — Latest Backend Updates (2026-10-05)
 
-Status as of commit `24e1594` ("Credit card logic refactor") on `master`. Working tree was clean at handoff time — everything described here is committed. This file documents a feature arc built across one extended session; delete or fold it into `CLAUDE.md` once its content is stable/obsolete.
+What changed in the API since the last handoff, what the frontend has to change, and what's already done on the data side. Field-by-field reference lives in `transactions-endpoint-handoff.md` (transactions + accounts) and `subscription_handoff.md`. Every request below is in `postman-collection.json`.
 
-## What was implemented
+All of this is **deployed to prod** (`xpenses-backend-prod`).
 
-1. **Accounts** — a financial-account/payment-method concept (`debit` / `credit` / `cash` / `other`), full CRUD, one can be marked default.
-2. **Entries linked to accounts** — expenses/income can optionally reference an account; untracked (no account) remains fully supported everywhere, by design.
-3. **Subscriptions** — recurring-charge templates (fixed or variable amount, a billing day, optional end date, pause/resume). A store action (`syncDueEntries`) simulates "the backend" creating a `pending` entry once a subscription's billing day arrives; paying a pending entry turns it into a normal entry.
-4. **Credit card debt model** (the core of this session) — purchases on a credit account create debt instead of an immediate cash outflow; debt is split into monthly installments; a separate `Payment` record reduces debt and debits a source account.
-5. **Dashboard "Pagos de tarjeta pendientes"** — the next actionable card obligation is a first-class, always-visible dashboard section (not a dialog you have to trigger), with an inline "Pagar" action.
+---
 
-## Key architectural decision: facts vs. derived views
+## TL;DR: frontend action items
 
-This is the one thing to internalize before touching this area. Only three things are persisted:
+1. **Call `POST /auth/sync` after every login** (not just the first). It now also creates the user's default account.
+2. **Replace `mockAccounts` with `GET /accounts`.** Accounts are real backend entities now, with live balances.
+3. **Only send `accountId` / `targetAccountId` values that come from `GET /accounts`.** Unknown ids are rejected with `400`. Omit `accountId` to use the default account.
+4. **`GET /transactions` no longer returns everything.** It returns the **last month, 50 per page**. Use `from`/`to` for other ranges, and `nextToken` for more pages.
+5. **Show balances from `GET /accounts`**, never by summing transactions (you no longer get all of them).
+6. **Handle the new `409`s** on transaction/account writes (reload + retry).
+7. **Transfers are one transaction now:** `type: "transfer"` + `targetAccountId`, instead of an expense + an income.
 
-- **Purchase** (an `Expense` with `accountId` + a snapshotted `paymentDay`)
-- **Payment** (`{ cardAccountId, amount, date, sourceAccountId? }`)
-- **Account** (incl. credit cards)
+---
 
-Everything else — current debt, what's due now, upcoming obligations by month, how many installments remain on a purchase — is a **pure function** computed at read time from those facts. Nothing is cached or mutated to represent "how much of this purchase is paid." This was a deliberate, explicitly-discussed choice (see the plan file below) over the alternative of storing/mutating a `paidAmount` field, specifically to avoid a second source of truth that can drift.
+## 1. Accounts (new)
 
-Two consequences worth knowing:
-- **`paymentDay` is snapshotted onto a Purchase at creation** (or when it's re-attached to a different account), never read live from the Account. Editing a card's payment day must never rewrite the schedule of past purchases — that invariant is enforced by never looking the account up again for classification.
-- **Payments are never linked to a specific purchase.** Which purchase a payment "counts against" is recomputed every time via FIFO-by-due-date (oldest obligation first, across all purchases on that card — not purchase-by-purchase). Do not add a `purchaseId` to `Payment`; that would reintroduce stored attribution the model deliberately avoids.
+Accounts moved from frontend mocks to the backend. Full CRUD under `/accounts`, protected by the same Cognito authorizer as transactions.
 
-"No prepayment" is enforced via an `isDue` flag: the dashboard always *shows* the next obligation (even next month's, as a preview), but the "Pagar" action only appears when `isDue` is true (its due date has actually arrived).
+### Shape
 
-## Files/components now relevant
+```ts
+type AccountType = "debit" | "credit" | "cash";
 
-**Core logic — read this first for anything credit-card-related:**
-- `features/expenses/balance.ts` — the single source of truth. `getCardLedger` (flattens every purchase's installment schedule for a card into one due-date-sorted queue, consumes it with that card's payments) is the primitive everything else wraps: `computeCardDebt`, `computeNextCardObligation`, `computeUpcomingObligations`, `countRemainingInstallments`, `computeBalances`, `computeAccountBalance`. A new "how much / when" question almost certainly belongs as a thin wrapper here, not a new calculation.
-- `lib/dates.ts` — shared `clampDayToMonth` / `toISODate` / `periodKey`. Extracted mid-session after finding the credit-card schedule had a month-end rollover bug that the subscriptions feature had already solved correctly; both features import from here now.
+type Account = {
+  email: string;
+  accountId: string;        // stable reference used by transactions; generated by the backend
+  name: string;
+  type: AccountType;
+  isSavings: boolean;       // default false
+  paymentDay: number | null; // 1-31, only allowed when type is "credit"
+  openingBalance: string;   // decimal string, default "0"
+  // server-managed (ignored if you send them):
+  balance: string;          // decimal string, can be negative; = openingBalance + settled transactions
+  transactionCount: number; // transactions referencing this account
+  isDefault: boolean;
+  createdAt: string;        // ISO-8601 UTC
+  updatedAt: string;
+};
+```
 
-**Types:**
-- `features/expenses/expenses.types.ts` — `Expense` (a "Purchase" when `accountId` + `paymentDay` are set). No `paidAmount` field — removed this session.
-- `features/accounts/accounts.types.ts`, `features/payments/payments.types.ts`, `features/subscriptions/subscriptions.types.ts`.
+Compared to the frontend mock type: `id` → `accountId`, plus `openingBalance`, `balance`, `transactionCount`, `isDefault`, `createdAt`, `updatedAt`. `isSavings`/`paymentDay` are always present (`false`/`null` when unset).
 
-**Stores** (`store/*.store.ts`) — one per feature, plain CRUD except: `accounts.store.ts` has `setDefaultAccount`; `subscriptions.store.ts` has `toggleSubscriptionStatus` + `syncDueEntries`; `payments.store.ts` has no `update` (payments are immutable — delete-and-recreate is the correction path). `expenses.store.ts` is back to plain CRUD — the payment-mutation actions it had mid-session (`payBilledDebt`/`payFullDebt`) are gone.
+Decimal strings (`balance`, `openingBalance`, `amount`) should be parsed as decimals, not floats. DynamoDB drops trailing zeros (`"650"`, not `"650.00"`).
 
-**UI:**
-- `app/dashboard/page.tsx` — balance tiles + `UpcomingCardPayments` + transaction list. No longer has the auto-popup payment reminder (see below).
-- `features/accounts/components/UpcomingCardPayments.tsx` — new; the dashboard's first-class obligation list.
-- `features/accounts/components/AccountCard.tsx` — per-account balance + next-obligation preview + pay button, all `isDue`-gated.
-- `features/accounts/components/AccountPaymentDialog.tsx` — the one payment dialog (full/partial amount + source-account picker). Its `variant` prop was removed this session once the only remaining caller became "manual" (see below).
-- `features/expenses/components/ExpenseDialog.tsx` — creates/edits entries; snapshots `paymentDay` only when the account selection actually changes; disables "Ingreso" when a credit account is selected (an income "purchase" on a card is really an undeclared refund, out of scope).
-- `features/expenses/components/ExpenseCard.tsx`, `features/subscriptions/components/*` — display-layer consumers of the above.
+### Endpoints
 
-## New conventions established
+| | |
+|---|---|
+| `POST /accounts` | Create. Body: `name`, `type`, optional `isSavings`, `paymentDay`, `openingBalance`. `201` with the Account (`balance` starts at `openingBalance`). `400` on invalid fields. |
+| `GET /accounts` | `{"accounts": [...]}`: all accounts in one response (no paging), default account first, then oldest first. |
+| `PUT /accounts` | Full replace of the editable fields. Send `accountId` + **all** editable fields. Changing `openingBalance` shifts `balance` by the same difference; use that to match a real bank balance. `404` if missing, `409` on a concurrent change. |
+| `DELETE /accounts?accountId=` | `400` for the default account. `409` while `transactionCount > 0`: move or delete its transactions first (pending ones count too). `404` if missing. |
 
-- **Sentinel values for "no selection"** in shadcn `Select` (`NO_ACCOUNT`/`NO_SOURCE = "none"`) since Radix `Select` rejects an empty-string value.
-- **Reset dialog state via `key`-prop remount from the parent**, not `useEffect` + `setState` — the latter trips the React Compiler's "avoid setState in an effect" lint rule. Used for every payment dialog instance.
-- **Verification via throwaway scripts**, not a test suite (none exists per `CLAUDE.md`). Pattern used repeatedly: write `scratch-verify-*.ts` at repo root importing the real modules, assert against hand-computed expected values with `npx tsx`, delete the script once green. Worth reusing for the next non-trivial change in this area — the Chrome extension for live browser verification was unavailable for roughly the back half of this session, so these scripts were the only real correctness check available.
+### Default account
 
-## Known limitations / technical debt
+- Every user has exactly one account with `accountId: "default"` and `isDefault: true`. `POST /auth/sync` creates it as **"General" / `cash`**.
+- It can be renamed/edited, but **never deleted**.
+- Any transaction created **without** an `accountId` lands there, including the pending bills the daily subscription job generates.
+- `POST /auth/sync` ensures it on **every** call, idempotently: it never resets a renamed default account or its balance.
 
-- **No refund/reversal model.** Explicitly deferred by the user, not forgotten. If added later, the discussed shape is a third small fact (`{ reversalOf: purchaseId, amount }`) — folds into the same ledger-derivation approach.
-- **No closing-date vs. due-date split, no interest/fees/minimum-payments/statements** — all explicitly out of scope by deliberate agreement, not oversights.
-- **`Account` still allows a credit card with no `paymentDay` set** (the field is optional in `AccountDialog`). `ExpenseDialog` blocks *using* such a card for a purchase until one is set, but nothing stops *creating* it that way — a minor UX gap, not fixed this session.
-- **Partial-period payment attribution tiebreak** (when a payment doesn't fully cover a period where two purchases both have something due) is decided by array/creation order — deterministic but not user-facing/configurable. Doesn't affect any totals, only which purchase's "X/Y cuotas" counter reflects the partial payment.
-- **No automated browser verification** of this session's final UI (dashboard section, payment dialog's new source-account picker) — only `tsc`/`eslint`/logic-script checks and SSR smoke tests (curl 200s). A manual click-through is still owed.
+### How balances move
 
-## Pending work directly related to this feature
+Every transaction create/update/delete updates its accounts in the **same atomic write**, so after any successful response `GET /accounts` already reflects it. Only transactions with `affectsBalance: true` **and** `pending: false` move a balance:
 
-- Manual browser pass of the full flow: create a credit card → purchase with installments → dashboard shows the obligation → pay it (with a source account) → balances and the dashboard section update correctly.
-- Refund/reversal model, whenever it's prioritized.
-- Possibly require `paymentDay` at credit-account creation time (closes the gap noted above).
-- No decision made on backend duplication: when a real backend arrives, whether it re-implements this derivation or exposes a computed-obligations endpoint is explicitly left open ("decide later" per the user).
+| transaction `type` | effect |
+|---|---|
+| `expense` | `-amount` on `accountId` |
+| `income` | `+amount` on `accountId` |
+| `transfer` | `-amount` on `accountId`, `+amount` on `targetAccountId` |
 
-## Before modifying this area
+Settling a pending transaction (`PUT` with `pending: false`) applies its effect at that moment. A credit card account (e.g. CMR) carrying debt shows a **negative** balance.
 
-- Don't re-derive "is this a credit purchase" from the account's current `type` — only `Expense.paymentDay != null` is authoritative. Re-adding a live account lookup would reintroduce the exact historical-schedule-drift bug this session fixed.
-- If you see `paidAmount` referenced anywhere, it's leftover from before this session's refactor and is a bug — it no longer exists on `Expense`.
-- The user has been very deliberate and iterative about scope here (explicitly pushed back on over-modeling more than once). Before adding a new stored field or entity in this area, check whether it's derivable from Purchase + Payment + Account first, and if you think it isn't, say so and why rather than just building it.
-- Full design rationale (why derive-vs-store, why FIFO-by-due-date, edge cases considered) lives in the approved plan at `C:\Users\jeanl\.claude\plans\vectorized-soaring-papert.md` if something here seems under-explained.
+---
+
+## 2. Transactions — changes
+
+### Transfers (new `type`)
+
+```json
+{
+  "title": "Move to savings",
+  "amount": "200000",
+  "categories": [],
+  "date": "2026-10-05",
+  "type": "transfer",
+  "affectsBalance": true,
+  "pending": false,
+  "accountId": "6",
+  "targetAccountId": "1"
+}
+```
+
+- `type` is now `"expense"` | `"income"` | `"transfer"`.
+- A transfer needs `targetAccountId` (must differ from `accountId`). `targetAccountId` on any other type is a `400`.
+- Exclude transfers from expense/income totals: they net to zero overall.
+- Subscriptions can't be transfers (`400`).
+
+### `accountId` is always set now
+
+- If you omit `accountId`, the transaction goes to `"default"`, and responses always include a non-null `accountId`.
+- `accountId` and `targetAccountId` must belong to the user's existing accounts, otherwise `400 {"message": "Account '<id>' does not exist"}` and nothing is written.
+
+### `GET /transactions` — date range + paging (breaking)
+
+```
+GET /transactions?from=2026-09-01&to=2026-09-30&limit=50&nextToken=...
+```
+
+| param | default |
+|---|---|
+| `to` | today (UTC), inclusive |
+| `from` | one calendar month before `to`, inclusive (Mar 31 → Feb 28) |
+| `limit` | 50 (max 200) |
+| `nextToken` | cursor from the previous page |
+
+Response:
+
+```json
+{
+  "transactions": [ ... ],
+  "dateRange": { "from": "2026-09-05", "to": "2026-10-05" },
+  "nextToken": "MjAyNi0wOS0xNSM..."
+}
+```
+
+- `nextToken` is `null` on the last page. When sending it back, send the **same** `from`/`to`; if you relied on the defaults, pass `dateRange.from`/`dateRange.to` explicitly so the range doesn't shift mid-paging.
+- The last page can come back empty with `nextToken: null`.
+- Future-dated transactions (e.g. upcoming installments) only appear if `to` is later than today.
+- `400` on bad dates, `from` after `to`, a bad `limit`, or a `nextToken` from a different range.
+
+### New error responses
+
+| endpoint | new response |
+|---|---|
+| `POST /transactions` | `400` unknown account; `409` if you supplied a `transactionId` that already exists |
+| `PUT /transactions` | `400` unknown account; `409` "changed or deleted by another request; reload it and retry" |
+| `DELETE /transactions` | `409` same as above |
+
+---
+
+## 3. Subscriptions / daily billing
+
+- Billed transactions now get `accountId: "default"` (still `pending: true`). When the user pays one, `PUT` it with the real amount, `pending: false` and the account it was paid from.
+- The billing job **never overwrites** an existing transaction anymore. Before, rerunning it for a day could reset a bill the user had already settled back to pending.
+
+---
+
+## 4. Data migration (already done in prod)
+
+- Accounts `"1"`–`"7"` were created for `jeanlopezcortes@gmail.com` with the **same ids, names and types as the frontend mocks**, so all existing transactions stay valid with no rewrite. CMR is `credit` with `paymentDay: 5`; Banco Estado ahorro vivienda has `isSavings: true`.
+- Balances and transaction counts were rebuilt from the full history, starting from `openingBalance: "0"`:
+
+| accountId | name | balance | transactions |
+|---|---|---|---|
+| `1` | Banco Estado ahorro vivienda | 1143000 | 1 |
+| `2` | Banco de Chile cta corriente | 0 | 0 |
+| `3` | Copec Pay debito | 2000000 | 2 |
+| `4` | Mach debito | 1335572 | 2 |
+| `5` | CMR | -146067 | 17 |
+| `6` | Cuenta RUT | 277904 | 12 |
+| `7` | Efectivo | 0 | 0 |
+| `default` | General | 0 | 0 |
+
+- **To do:** set each account's real `openingBalance` with `PUT /accounts` so `balance` matches the bank. New accounts created from now on get backend-generated ids (32-char hex), not `"1"`–`"7"`.
+
+---
+
+## 5. Backend-internal (no API impact)
+
+- **New Accounts table** `xpenses-accounts-table-prod` (PK `email`, SK `accountId`), created outside the stack like the other tables.
+- **Repo layout:** `api/` now only holds endpoint Lambdas. The authorizer moved to `authorizer/` and the daily billing job to `billing/`. That move goes live with the next `sam build` + `sam deploy`, with no behavior change.
+- **Backfill/repair CLI:** `python layers/models/account.py <email> | --all` rebuilds balances and counts from transaction history.
+
+---
+
+## Postman
+
+`postman-collection.json` covers all of the above. Create a Postman environment with `baseUrl` (the stack's `ApiUrl` output) and `authToken` (a Cognito ID token from `api/auth/sync/get_test_token.py`, valid for 60 minutes). Then run the folders in order:
+
+1. **Auth** → Sync User (creates the default account)
+2. **Accounts** → creates `{{accountId}}`, lists, updates, and demonstrates the delete rules
+3. **Transactions** → create (on `{{accountId}}`), transfer (`{{accountId}}` → `default`), list + next page, update, delete
+4. **Subscriptions**
+
+A full run of Transactions leaves `{{accountId}}` at `openingBalance − 200` and the default account at `+200`: the expense is created, updated and deleted (net 0), and only the transfer remains.

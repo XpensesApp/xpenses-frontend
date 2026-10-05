@@ -21,6 +21,19 @@ type WireTransaction = {
   billingPeriod: string | null;
 };
 
+export type TransactionsPage = {
+  transactions: Transaction[];
+  dateRange: { from: string; to: string };
+  nextToken: string | null;
+};
+
+export type ListTransactionsParams = {
+  from?: string;
+  to?: string;
+  limit?: number;
+  nextToken?: string;
+};
+
 function fromWire(wire: WireTransaction): Transaction {
   return {
     id: wire.transactionId,
@@ -71,15 +84,33 @@ async function parseError(res: Response, fallback: string): Promise<never> {
   // revocation) — treat any 401 the same as an expired token.
   if (res.status === 401) forceReauth();
   const body = await res.json().catch(() => null);
-  throw new Error(body?.message ?? fallback);
+  // .status lets callers special-case a 409 (changed/deleted concurrently —
+  // reload and retry) without string-matching the message.
+  const error = new Error(body?.message ?? fallback) as Error & { status?: number };
+  error.status = res.status;
+  throw error;
 }
 
 export const transactionsService = {
-  getAll: async (): Promise<Transaction[]> => {
-    const res = await fetch(BASE_URL, { headers: await authHeaders() });
+  // No params means "the last calendar month, first page" (the backend's own
+  // defaults) — see TransactionsPage/ListTransactionsParams for the date
+  // range + paging contract.
+  list: async (params: ListTransactionsParams = {}): Promise<TransactionsPage> => {
+    const query = new URLSearchParams();
+    if (params.from) query.set("from", params.from);
+    if (params.to) query.set("to", params.to);
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.nextToken) query.set("nextToken", params.nextToken);
+    const url = query.size > 0 ? `${BASE_URL}?${query.toString()}` : BASE_URL;
+
+    const res = await fetch(url, { headers: await authHeaders() });
     if (!res.ok) return parseError(res, "Failed to load transactions");
     const data = await res.json();
-    return (data.transactions as WireTransaction[]).map(fromWire);
+    return {
+      transactions: (data.transactions as WireTransaction[]).map(fromWire),
+      dateRange: data.dateRange,
+      nextToken: data.nextToken ?? null,
+    };
   },
 
   create: async (transaction: Omit<Transaction, "id">): Promise<Transaction> => {

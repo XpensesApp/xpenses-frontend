@@ -5,14 +5,12 @@ import { accountsService } from "@/features/accounts/accounts.service";
 type AccountsState = {
   accounts: Account[];
   loadAccounts: () => Promise<void>;
-  addAccount: (account: Account) => Promise<void>;
+  addAccount: (account: Omit<Account, "id" | "balance" | "transactionCount">) => Promise<void>;
   updateAccount: (account: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
-  /** Marks the given account as default, unsetting any previous default. Passing the current default's id clears it. */
-  setDefaultAccount: (id: string) => Promise<void>;
 };
 
-export const useAccountsStore = create<AccountsState>((set, get) => ({
+export const useAccountsStore = create<AccountsState>(set => ({
   accounts: [],
 
   loadAccounts: async () => {
@@ -20,17 +18,19 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
     set({ accounts: data });
   },
 
+  // The backend generates accountId/balance/transactionCount, so the created
+  // account used to update local state is its response, not the input.
   addAccount: async (account) => {
-    await accountsService.create(account);
+    const created = await accountsService.create(account);
     set(state => ({
-      accounts: [account, ...state.accounts],
+      accounts: [...state.accounts, created],
     }));
   },
 
   updateAccount: async (account) => {
-    await accountsService.update(account);
+    const updated = await accountsService.update(account);
     set(state => ({
-      accounts: state.accounts.map(a => (a.id === account.id ? account : a)),
+      accounts: state.accounts.map(a => (a.id === updated.id ? updated : a)),
     }));
   },
 
@@ -38,33 +38,6 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
     await accountsService.delete(id);
     set(state => ({
       accounts: state.accounts.filter(a => a.id !== id),
-    }));
-  },
-
-  setDefaultAccount: async (id) => {
-    const current = get().accounts;
-    const target = current.find(a => a.id === id);
-    if (!target) return;
-
-    const makeDefault = !target.isDefault;
-    const changed = current.filter(
-      a => a.id === id || a.isDefault
-    );
-
-    await Promise.all(
-      changed.map(a =>
-        accountsService.update({
-          ...a,
-          isDefault: a.id === id ? makeDefault : false,
-        })
-      )
-    );
-
-    set(state => ({
-      accounts: state.accounts.map(a => ({
-        ...a,
-        isDefault: a.id === id ? makeDefault : false,
-      })),
     }));
   },
 }));

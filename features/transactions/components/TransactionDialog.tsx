@@ -23,6 +23,7 @@ import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { Transaction, TransactionType } from "@/features/transactions/transactions.types";
 import { nowLocalDateTime, toDateTimeLocalValue } from "@/lib/dates";
+import { errorMessage, errorStatus } from "@/lib/utils";
 
 const NO_ACCOUNT = "none";
 
@@ -50,6 +51,7 @@ export function TransactionDialog(props: Props) {
   const addTransaction = useTransactionsStore(state => state.addTransaction);
   const updateTransaction = useTransactionsStore(state => state.updateTransaction);
   const deleteTransaction = useTransactionsStore(state => state.deleteTransaction);
+  const loadTransactions = useTransactionsStore(state => state.loadTransactions);
   const accounts = useAccountsStore(state => state.accounts);
 
   const [type, setType] = useState<TransactionType>("expense");
@@ -240,8 +242,11 @@ export function TransactionDialog(props: Props) {
 
       onOpenChange(false);
       onSaved?.();
-    } catch {
-      setError("No se pudo guardar. Intenta de nuevo.");
+    } catch (error) {
+      setError(errorMessage(error, "No se pudo guardar. Intenta de nuevo."));
+      // A 409 means this transaction was changed/deleted elsewhere since it
+      // was loaded — refresh so the next save attempt starts from current data.
+      if (errorStatus(error) === 409) loadTransactions();
     } finally {
       setSaving(false);
     }
@@ -257,8 +262,9 @@ export function TransactionDialog(props: Props) {
       await deleteTransaction(props.transaction.id, props.transaction.date);
       onOpenChange(false);
       onSaved?.();
-    } catch {
-      setError("No se pudo eliminar. Intenta de nuevo.");
+    } catch (error) {
+      setError(errorMessage(error, "No se pudo eliminar. Intenta de nuevo."));
+      if (errorStatus(error) === 409) loadTransactions();
       setDeleting(false);
     }
   }
