@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import NextAuth from "next-auth";
 import Cognito from "next-auth/providers/cognito";
 
@@ -15,6 +16,24 @@ import Cognito from "next-auth/providers/cognito";
 // are inlined as literal strings at build time, so this value is immune to
 // Amplify's runtime env-delivery flakiness.
 process.env.AUTH_URL ??= process.env.NEXT_PUBLIC_DEPLOYMENT_URL;
+
+// TEMPORARY diagnostic for a production bug: the OAuth callback intermittently
+// fails to decrypt the PKCE cookie with Auth.js's InvalidCheck error, but only
+// after a long-idle auto-logout (never a manual one) — i.e. only when a
+// Lambda container has likely gone cold in between. The #1 known cause of
+// InvalidCheck on serverless deployments is AUTH_SECRET not being identical
+// across every container. This logs a short hash (never the secret itself)
+// plus when this module was (re-)evaluated, so CloudWatch logs around a
+// repro can show whether the container that set the PKCE cookie (handling
+// `/login`) and the one that read it back (the callback) agree. Remove once
+// resolved.
+console.log(
+  `[auth-debug] module evaluated at ${new Date().toISOString()}, AUTH_SECRET hash=${
+    process.env.AUTH_SECRET
+      ? createHash("sha256").update(process.env.AUTH_SECRET).digest("hex").slice(0, 8)
+      : "MISSING"
+  }`
+);
 
 export const {
   handlers: { GET, POST },
