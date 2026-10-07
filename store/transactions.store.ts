@@ -1,9 +1,24 @@
 import { create } from "zustand";
 import { Transaction } from "@/features/transactions/transactions.types";
 import { transactionsService } from "@/features/transactions/transactions.service";
+import { useAccountsStore } from "@/store/accounts.store";
 import { addDays } from "@/lib/dates";
 
 type DateRange = { from: string; to: string };
+
+// Account balances are maintained server-side, so they go stale in the
+// accounts store the moment a transaction is created/edited/deleted —
+// refresh them so computed figures (e.g. card debt) update immediately
+// instead of only after the next full page load. Best-effort: the
+// transaction mutation itself already succeeded by the time this runs, so a
+// flaky refresh shouldn't surface as a failed save/delete.
+async function refreshAccounts() {
+  try {
+    await useAccountsStore.getState().loadAccounts();
+  } catch {
+    // Stale balances will catch up on the next load elsewhere.
+  }
+}
 
 type TransactionsState = {
   transactions: Transaction[];
@@ -84,6 +99,7 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
     set(state => ({
       transactions: [created, ...state.transactions],
     }));
+    await refreshAccounts();
   },
 
   updateTransaction: async (transaction) => {
@@ -91,6 +107,7 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
     set(state => ({
       transactions: state.transactions.map(t => (t.id === updated.id ? updated : t)),
     }));
+    await refreshAccounts();
   },
 
   // The backend's delete key is `email` + `transactionId` + `date`, so the
@@ -101,5 +118,6 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
     set(state => ({
       transactions: state.transactions.filter(t => t.id !== id),
     }));
+    await refreshAccounts();
   },
 }));
