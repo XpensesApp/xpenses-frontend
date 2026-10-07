@@ -47,7 +47,7 @@ function fromWire(wire: WireTransaction): Transaction {
     accountId: wire.accountId ?? undefined,
     targetAccountId: wire.targetAccountId ?? undefined,
     installments: wire.installments ?? undefined,
-    paymentDay: wire.paymentDay ?? undefined,
+    paymentDay: wire.paymentDay != null ? Number(wire.paymentDay) : undefined,
     subscriptionId: wire.subscriptionId ?? undefined,
     billingPeriod: wire.billingPeriod ?? undefined,
   };

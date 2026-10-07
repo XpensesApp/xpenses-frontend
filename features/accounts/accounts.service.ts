@@ -25,7 +25,7 @@ function fromWire(wire: WireAccount): Account {
     name: wire.name,
     type: wire.type,
     isSavings: wire.isSavings,
-    paymentDay: wire.paymentDay ?? undefined,
+    paymentDay: wire.paymentDay != null ? Number(wire.paymentDay) : undefined,
     isDefault: wire.isDefault,
     balance: Number(wire.balance),
     openingBalance: Number(wire.openingBalance),
