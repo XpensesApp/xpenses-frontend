@@ -109,7 +109,12 @@ export function TransactionDialog(props: Props) {
       setAmount(transaction.amount === 0 && isPaying ? "" : String(transaction.amount));
       setCategories(transaction.categories);
       setCategoryInput("");
-      setDate(isPaying ? nowLocalDateTime() : toDateTimeLocalValue(transaction.date));
+      // A statement's date is its due date, not when it's actually paid —
+      // the backend rejects changing it, unlike a subscription's pending
+      // entry, where resetting to "now" records the real payment moment.
+      setDate(
+        isPaying && !isStatement ? nowLocalDateTime() : toDateTimeLocalValue(transaction.date)
+      );
       setAffectsBalance(transaction.affectsBalance);
       setAccountId(
         isPaying
@@ -410,6 +415,7 @@ export function TransactionDialog(props: Props) {
               type="datetime-local"
               value={date}
               onChange={e => setDate(e.target.value)}
+              disabled={isStatement}
               className="[&::-webkit-calendar-picker-indicator]:size-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[&::-webkit-calendar-picker-indicator]:invert"
             />
           </div>
