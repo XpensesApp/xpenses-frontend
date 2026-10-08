@@ -1,79 +1,185 @@
 # Handoff — Latest Backend Updates
 
-Newest first. Field-by-field reference lives in `transactions-endpoint-handoff.md` (transactions + accounts) and `subscription_handoff.md`. Every request below is in `postman-collection.json`.
+Newest first. Subscriptions have their own reference in `subscription_handoff.md`. Every request below is in `postman-collection.json`.
 
 ---
 
-# 2026-10-07 — Credit card statements (built, **not deployed yet**)
+# 2026-10-08 — Credit card system
 
-Card purchases can now be split into installments ("cuotas"), and every credit card gets one pending payment per month, like a subscription.
+Card purchases can be split into installments ("cuotas"), and each credit card gets **one pending payment per month** (its "statement"), like a subscription. The statement is kept up to date automatically.
+
+| | status |
+|---|---|
+| Monthly statements created by the daily job; prod data migrated (CMR statement for 2026-10-04 = 143.887, pending; "Retiro" + "Abono" merged into one transfer) | **deployed** (2026-10-08) |
+| Statement **recalculated on every transaction write**, amounts as a closed formula (`since`/`revision` fields), consistent reads on `GET /transactions` and `GET /accounts`, `400` when deleting a pending statement | built, **not deployed yet** |
+
+Everything below describes the system once both parts are deployed.
 
 ## TL;DR: frontend action items
 
 1. **Installment purchases:** create the purchase as usual (an `expense` with `accountId` = the card) and set `installments` to the number of cuotas. Leave it unset (or `1`) for a single payment. Send the **full** purchase amount; the backend splits it.
-2. **Show the monthly statement:** it's a regular transaction in `GET /transactions` with a non-null `statement` field: a pending `transfer` from the default account into the card.
-3. **Pay it:** `PUT` the statement with `amount` = what was actually paid (can be less or more than due), `pending: false` and `accountId` = the account it was paid from.
-4. **Don't delete statements.** The job regenerates a deleted one on its next run. To skip a month, just leave it pending; it rolls into the next one.
+2. **Show the statement:** it's a regular transaction in `GET /transactions` with a non-null `statement` field: a `transfer` from the default account into the card, dated on the card's due date. While unpaid it's `pending: true`.
+3. **Pay it:** `PUT` the statement with `amount` = what was actually paid (less or more than due is fine), `pending: false`, and `accountId` = the account it was paid from.
+4. **After every transaction write, refresh the right data:** see [After a write: what to refetch](#after-a-write-what-to-refetch).
+5. **Never try to delete a pending statement** (`400`). To skip a month, leave it pending; it rolls into the next one.
+6. **On `409`:** reload the transaction and retry; something changed it in between.
 
 ## How it works
 
-- **Purchase:** a full `expense` on the card at purchase time, so the card's `balance` shows the whole debt (`-120000` for a 120.000 TV in 12 cuotas).
-- **Due date:** the card's `paymentDay` (clamped to the month's length). A purchase made **before** the due date is first billed on that due date; one made **on or after** it goes to the next month. Cuota *k* is billed on the *k*-th due date from there.
-- **Each cuota:** the amount ÷ installments, rounded down to whole pesos (or to the amount's decimals), with the remainder on the last one. 100.000 in 3 → 33.333, 33.333, 33.334.
-- **Statement amount** = this month's cuotas from every active purchase + whatever is still owed from the last statement.
-- **Payments that count:** paying the statement, any other `transfer` into the card, and refunds (`income` on the card) between one statement and the next. Partial payments and overpayments carry over automatically. An overpayment becomes a credit that lowers the next statement.
-- **An unpaid statement** is replaced by the next month's, which includes its full amount in `previousBalance`. A card only ever has one pending statement.
-- **Generated daily at 03:15 Chile time.** If a run is missed, the next one catches up on the card's most recent due date.
+**Purchases.** A purchase is a full `expense` on the card at purchase time, so the card's `balance` (from `GET /accounts`) shows the whole debt: `-120000` for a 120.000 TV in 12 cuotas.
+
+**Due dates.** The card's `paymentDay`, clamped to the month's length (31 → Feb 28/29). A purchase made **before** a due date is first billed on that due date; one made **on or after** it goes to the next month. Cuota *k* is billed on the *k*-th due date from there.
+
+**Cuotas.** The amount ÷ installments, rounded down to whole pesos (or to the amount's decimals), with the remainder on the last one, so they always add up exactly. 100.000 in 3 → 33.333, 33.333, 33.334.
+
+**What a statement charges.** For the statement due on date D:
+
+> **amount due = every cuota due from the card's first statement up to D − every payment made from the card's first statement up to the day before D**
+
+Payments are: paid statements, any other settled `transfer` into the card, and refunds (`income` on the card). So partial payments, overpayments and late payments all carry over by themselves. Cuotas due before the card's first statement are assumed paid outside the app.
+
+**The breakdown** splits that amount in two:
+- `lines`: the cuotas billed since the last **paid** statement
+- `previousBalance`: whatever was still owed before them (negative = credit from an overpayment)
+
+**Example** (card with `paymentDay` 5):
+
+| | cuotas billed | payments | amount |
+|---|---|---|---|
+| TV 120.000 in 12 cuotas bought 2026-09-10, Farmacia 5.000 on 2026-10-01 | | | |
+| **Statement 2026-10-05** | TV 1/12 10.000 + Farmacia 5.000 = 15.000 | | **15.000** |
+| You pay 6.000 | | 6.000 | |
+| **Statement 2026-11-05** | `lines`: TV 2/12 10.000 · `previousBalance`: 9.000 | | **19.000** |
+| Not paid → **statement 2026-12-05** replaces it | `lines`: TV 2/12, TV 3/12 = 20.000 · `previousBalance`: 9.000 | | **29.000** |
+
+**Lifecycle.**
+- **At most one pending statement per card.** When the next due date arrives and the previous statement is still unpaid, it's deleted and the new one (which already includes its amount) takes its place, in a single atomic write.
+- **Paid statements never change.** If you edit a purchase from a month you already paid, the difference shows up in the next statement's `previousBalance`.
+- **A payment dated after a statement's due date counts toward the next month**, not the current statement. Pay the current one by settling it.
+
+**When statements are created and recalculated.** Right after every create/edit/delete of a transaction touching the card (as `accountId` or `targetAccountId`, in its old or new version), before the API responds:
+- **Created** as soon as a purchase makes something due, e.g. a purchase dated before the card's latest due date.
+- **Recalculated** when purchases or payments change.
+- **Deleted** if nothing is due anymore.
+
+A daily job (03:15 Chile time) does the same for every card as a safety net, and creates each month's statement on its due date.
 
 ## The statement transaction
 
 ```json
 {
-  "title": "Pago CMR 2026-11-04",
-  "amount": "20500",
-  "date": "2026-11-04",
+  "title": "Pago CMR 2026-11-05",
+  "amount": "19000",
+  "categories": [],
+  "date": "2026-11-05",
   "type": "transfer",
   "pending": true,
   "affectsBalance": true,
   "accountId": "default",
   "targetAccountId": "5",
-  "transactionId": "statement-5-2026-11-04",
+  "transactionId": "statement-5-2026-11-05",
   "billingPeriod": "2026-11",
   "statement": {
     "accountId": "5",
-    "installmentsDue": "13000",
-    "previousBalance": "7500",
-    "amountDue": "20500",
+    "installmentsDue": "10000",
+    "previousBalance": "9000",
+    "amountDue": "19000",
     "lines": [
-      { "transactionId": "…", "title": "TV", "date": "2026-09-10", "installment": 2, "installments": 12, "amount": "10000" },
-      { "transactionId": "…", "title": "Biombo", "date": "2026-10-05", "installment": 1, "installments": 1, "amount": "3000" }
-    ]
+      { "transactionId": "…", "title": "TV", "date": "2026-09-10", "installment": 2, "installments": 12, "amount": "10000" }
+    ],
+    "since": "2026-10-05",
+    "revision": 3
   }
 }
 ```
 
-- `statement` is **server-managed**. On `PUT`, a statement's `type`, `targetAccountId` and `statement` are always kept from the stored item, whatever you send. On `POST`, any `statement` you send is ignored.
-- `statement.amountDue` can be negative (credit), in which case `amount` is `"0"`.
-- `installment`/`installments` come back as numbers. The amounts are decimal strings like everywhere else.
+| field | meaning |
+|---|---|
+| `amount` | what to pay now: `amountDue`, but never below 0. After settling: what was actually paid |
+| `statement.accountId` | the card |
+| `statement.lines` | cuotas billed since the last paid statement (`installment` of `installments`) |
+| `statement.installmentsDue` | sum of `lines` |
+| `statement.previousBalance` | still owed from before; negative = credit |
+| `statement.amountDue` | `installmentsDue + previousBalance`; can be negative, then `amount` is `"0"` |
+| `statement.since` | the card's first statement date |
+| `statement.revision` | increases on every recalculation; handy to detect a change |
+
+- `statement` is **server-managed**: ignored on `POST`, and on `PUT` a statement's `type`, `targetAccountId` and `statement` always come from the stored item.
+- **While pending:** you can set `title`, `categories` and `accountId` (the account you'll pay from), and they survive recalculations. `amount` can't be overridden; it's always the computed one. Set the real amount when settling.
+- `installment`/`installments`/`revision` are numbers; amounts are decimal strings like everywhere else.
 - Every other transaction has `"statement": null`.
+
+## After a write: what to refetch
+
+Every create/edit/delete updates balances and card statements **before** the API responds, and the read endpoints are strongly consistent, so a refetch right after the response always sees the new state.
+
+| after | update locally | refetch |
+|---|---|---|
+| `POST /transactions` | insert the response (it's the saved transaction) | `GET /accounts`; plus the card statement if it touched a card |
+| `PUT /transactions` | replace with the response | `GET /accounts`; plus the card statement if the old **or** new version touched a card |
+| `DELETE /transactions` | remove the item | `GET /accounts`; plus the card statement if it touched a card |
+| settling a statement (`PUT`) | replace with the response | `GET /accounts` |
+
+- **Why `GET /accounts` every time:** any transaction write can move up to two balances, and it's a single small call returning all accounts.
+- **"Touched a card"** means `accountId` or `targetAccountId` is an account with `type: "credit"`. For an edit, check both the old and the new version, e.g. moving a purchase off a card changes that card's statement.
+- **Refetching the statement:** it may have been created, changed or deleted, so refetch rather than patch it locally. It's the transaction dated on the card's latest due date:
+
+  ```ts
+  // Same rule as the backend (which uses the UTC date): this month's paymentDay
+  // if already reached, otherwise last month's, clamped to the month's length.
+  export function latestDueDate(paymentDay: number, now = new Date()): string {
+    const dueIn = (year: number, month: number) => {
+      const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      return new Date(Date.UTC(year, month, Math.min(paymentDay, lastDay)));
+    };
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    let due = dueIn(today.getUTCFullYear(), today.getUTCMonth());
+    if (due > today) due = dueIn(today.getUTCFullYear(), today.getUTCMonth() - 1);
+    return due.toISOString().slice(0, 10);
+  }
+
+  // GET /transactions?from=<due>&to=<due> → the item with statement?.accountId === card.accountId
+  // (none = nothing due on that card right now)
+  ```
+
+  If the transactions page you're showing already covers that date, refetching that page is enough.
+- **A purchase dated after the due date** (the usual case for today's purchases) doesn't change the current statement. It's billed next month, so the refetch just returns the same statement.
+- **If a recalculation fails on the server**, your write still succeeds (the transaction is saved) and the statement is fixed by the nightly job. You don't need to handle this case.
+
+**Suggested card screen:**
+- **Debt:** `balance` from `GET /accounts`.
+- **Pending statement:** its `amount`, with `lines` listed as "TV · cuota 2/12 · 10.000" and `previousBalance` shown separately when it isn't 0.
+- **Pay button:** amount prefilled with `amount`, plus a source-account picker. Submits a `PUT` with `pending: false`.
+
+## Errors
+
+| response | when | what to do |
+|---|---|---|
+| `400` "A pending card statement can't be deleted…" | `DELETE` on a pending statement | don't offer delete on pending statements |
+| `400` "Account '<id>' does not exist" | the transaction references an unknown account | refresh accounts |
+| `409` "…changed or deleted by another request; reload it and retry" | concurrent change (e.g. a recalculation just updated the statement you're settling) | reload the transaction, then retry |
 
 ## Also fixed
 
-- `PUT /transactions` and `POST /transactions` now ignore a client-sent `sk`; the key always comes from `date` + `transactionId`. Before, a mismatched `sk` could store the transaction under the wrong key.
+- `POST`/`PUT /transactions` ignore a client-sent `sk`; the key always comes from `date` + `transactionId`.
+- `GET /transactions` and `GET /accounts` use strongly consistent reads, so a refetch right after a write never returns the old state.
 
 ## Postman
 
-Three new requests, all of which work once this is deployed:
+Run **Auth → Accounts → Transactions** in order; the card flow is in Transactions:
 
-- **Accounts → Create Credit Card**: a `credit` account with `paymentDay: 5`, saved as `{{cardAccountId}}`.
-- **Transactions → Create Installment Purchase**: a 120.000 `expense` on `{{cardAccountId}}` in 12 `installments`, so the card balance goes to `-120000`.
-- **Transactions → Pay Card Statement**: settles a pending statement with its full `amountDue` from `{{accountId}}`. Lower the `amount` to try a partial payment.
+1. **Create Installment Purchase**: a 120.000 TV in 12 cuotas dated today. Its first cuota is due next month, so it doesn't touch the current statement.
+2. **Create Backdated Card Purchase**: 30.000 in 3 cuotas dated the day before the card's latest due date, so the statement is created **immediately** with 1/3 = 10.000.
+3. **Get Card Statement**: fetches it by its due date, exactly like the frontend recipe above.
+4. **Edit Backdated Card Purchase (recalculates)**: 30.000 → 60.000; then **Get Card Statement (recalculated)** shows 20.000 and a higher `revision`.
+5. **Delete Pending Statement (rejected)**: expects the `400`.
+6. **Pay Card Statement**: settles it from `{{accountId}}`.
 
-The statement itself comes from the daily job, so it can't be created from Postman. "List Transactions" now remembers a pending statement if its page contains one. "Pay Card Statement" is skipped until a statement exists: the card needs a due date to pass after the purchase, and the list's date range needs to include that due date.
+Steps 2–5 need the live recalculation deployed; before that, the statement only appears when the daily job runs.
 
-## When this is deployed
+## When the recalculation is deployed
 
-The first run catches up on each card's most recent due date. For CMR (`paymentDay` currently **4**), that's a pending **"Pago CMR 2026-10-04" for 143.887**, covering the 16 purchases from 2026-09-07 to 2026-10-01. If that bill was already paid outside the app, settle it with the real amount and source account; that also records the payment on the CMR balance.
+The existing CMR statement (2026-10-04, 143.887, pending) is rewritten once with the same amount and the same 16 lines; it just gains `since` and `revision`. Nothing visible changes. If that bill was already paid outside the app, settle it with the real amount and source account; that also records the payment on the CMR balance.
 
 ---
 

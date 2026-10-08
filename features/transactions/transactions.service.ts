@@ -18,6 +18,8 @@ type WireStatement = {
   previousBalance: string;
   amountDue: string;
   lines: WireStatementLine[];
+  since: string;
+  revision: number;
 };
 
 type WireTransaction = {
@@ -80,6 +82,8 @@ function fromWire(wire: WireTransaction): Transaction {
             installments: line.installments,
             amount: Number(line.amount),
           })),
+          since: wire.statement.since,
+          revision: wire.statement.revision,
         }
       : undefined,
   };

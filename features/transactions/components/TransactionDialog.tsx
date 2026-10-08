@@ -274,10 +274,12 @@ export function TransactionDialog(props: Props) {
         <div className="space-y-3">
           {isStatement && statement && (
             <div className="space-y-1 rounded-lg border p-3 text-sm">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Saldo anterior</span>
-                <span className="tabular-nums">${statement.previousBalance.toLocaleString()}</span>
-              </div>
+              {statement.previousBalance !== 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Saldo anterior</span>
+                  <span className="tabular-nums">${statement.previousBalance.toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between text-muted-foreground">
                 <span>Cuotas de este mes</span>
                 <span className="tabular-nums">${statement.installmentsDue.toLocaleString()}</span>

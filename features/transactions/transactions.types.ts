@@ -54,5 +54,10 @@ export type StatementInfo = {
   previousBalance: number;
   /** What's due now (`installmentsDue + previousBalance`, net of any payments/refunds since). Can be negative — a credit from overpaying — in which case the transaction's own `amount` is `0`. */
   amountDue: number;
+  /** Cuotas billed since the last *paid* statement — `previousBalance` covers everything older. */
   lines: StatementLine[];
+  /** The card's first-ever statement date. */
+  since: string;
+  /** Bumped on every recalculation (any write touching this card recalculates it) — a cheap way to tell a statement changed. */
+  revision: number;
 };

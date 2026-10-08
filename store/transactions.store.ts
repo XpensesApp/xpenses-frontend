@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { Transaction } from "@/features/transactions/transactions.types";
 import { transactionsService } from "@/features/transactions/transactions.service";
 import { useAccountsStore } from "@/store/accounts.store";
-import { addDays } from "@/lib/dates";
+import { Account } from "@/features/accounts/accounts.types";
+import { addDays, latestDueDate } from "@/lib/dates";
 
 type DateRange = { from: string; to: string };
 
@@ -18,6 +19,54 @@ async function refreshAccounts() {
   } catch {
     // Stale balances will catch up on the next load elsewhere.
   }
+}
+
+// A write that touches a credit card recalculates that card's one pending
+// statement server-side (created, updated, or deleted outright) before the
+// response comes back — so it has to be refetched rather than patched
+// locally. It's always the transaction dated on the card's latest due date
+// (see `latestDueDate`), per the backend's own recipe for finding it.
+async function refreshCardStatement(cardAccountId: string, paymentDay: number) {
+  const due = latestDueDate(paymentDay);
+  const page = await transactionsService.list({ from: due, to: due });
+  const fresh = page.transactions.find(t => t.statement?.accountId === cardAccountId);
+
+  useTransactionsStore.setState(state => {
+    // Drop whatever pending statement we had locally for this card unless
+    // it's the one we just fetched — it may have been replaced (next
+    // month's took over) or deleted outright (nothing due anymore).
+    const withoutStalePending = state.transactions.filter(
+      t => !(t.statement?.accountId === cardAccountId && t.pending && t.id !== fresh?.id)
+    );
+    if (!fresh) return { transactions: withoutStalePending };
+    return {
+      transactions: [fresh, ...withoutStalePending.filter(t => t.id !== fresh.id)],
+    };
+  });
+}
+
+// A write can touch up to two cards — whichever account(s) the transaction
+// referenced before and after it, since e.g. editing a purchase to point at
+// a different card changes both cards' statements. Best-effort: a failed
+// recalculation here is caught by the backend's own nightly job regardless.
+async function refreshTouchedCardStatements(...transactions: (Transaction | undefined)[]) {
+  const accounts = useAccountsStore.getState().accounts;
+  const cardIds = new Set<string>();
+  for (const t of transactions) {
+    if (!t) continue;
+    if (t.accountId) cardIds.add(t.accountId);
+    if (t.targetAccountId) cardIds.add(t.targetAccountId);
+  }
+
+  const cards = [...cardIds]
+    .map(id => accounts.find(a => a.id === id))
+    .filter((a): a is Account => !!a && a.type === "credit" && a.paymentDay != null);
+
+  await Promise.all(
+    cards.map(card =>
+      refreshCardStatement(card.id, card.paymentDay!).catch(() => {})
+    )
+  );
 }
 
 type TransactionsState = {
@@ -100,24 +149,29 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
       transactions: [created, ...state.transactions],
     }));
     await refreshAccounts();
+    await refreshTouchedCardStatements(created);
   },
 
   updateTransaction: async (transaction) => {
+    const previous = get().transactions.find(t => t.id === transaction.id);
     const updated = await transactionsService.update(transaction);
     set(state => ({
       transactions: state.transactions.map(t => (t.id === updated.id ? updated : t)),
     }));
     await refreshAccounts();
+    await refreshTouchedCardStatements(previous, updated);
   },
 
   // The backend's delete key is `email` + `transactionId` + `date`, so the
   // date has to travel alongside the id — it can't be looked up from `id`
   // alone the way the in-memory mock could.
   deleteTransaction: async (id, date) => {
+    const existing = get().transactions.find(t => t.id === id);
     await transactionsService.delete(id, date);
     set(state => ({
       transactions: state.transactions.filter(t => t.id !== id),
     }));
     await refreshAccounts();
+    await refreshTouchedCardStatements(existing);
   },
 }));
