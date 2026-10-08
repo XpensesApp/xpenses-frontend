@@ -75,6 +75,7 @@ export function TransactionDialog(props: Props) {
 
   const selectedAccount = accounts.find(a => a.id === accountId);
   const isCreditSelected = selectedAccount?.type === "credit";
+  const preferredAccountId = accounts.find(a => a.isPreferred)?.id;
   const isPaying = props.mode === "edit" && props.transaction.pending;
   const statement = props.mode === "edit" ? props.transaction.statement : undefined;
   const isStatement = !!statement;
@@ -118,7 +119,7 @@ export function TransactionDialog(props: Props) {
       setAffectsBalance(transaction.affectsBalance);
       setAccountId(
         isPaying
-          ? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT
+          ? preferredAccountId ?? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT
           : transaction.accountId ?? NO_ACCOUNT
       );
       setTargetAccountId(transaction.targetAccountId ?? NO_ACCOUNT);
@@ -132,7 +133,7 @@ export function TransactionDialog(props: Props) {
       setCategoryInput("");
       setDate(nowLocalDateTime());
       setAffectsBalance(true);
-      setAccountId(accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT);
+      setAccountId(preferredAccountId ?? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT);
       setTargetAccountId(NO_ACCOUNT);
       setUseInstallments(false);
       setInstallments("");

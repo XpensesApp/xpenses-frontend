@@ -13,6 +13,7 @@ type WireAccount = {
   balance: string;
   transactionCount: number;
   isDefault: boolean;
+  isPreferred: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -27,6 +28,7 @@ function fromWire(wire: WireAccount): Account {
     isSavings: wire.isSavings,
     paymentDay: wire.paymentDay != null ? Number(wire.paymentDay) : undefined,
     isDefault: wire.isDefault,
+    isPreferred: wire.isPreferred,
     balance: Number(wire.balance),
     openingBalance: Number(wire.openingBalance),
     transactionCount: wire.transactionCount,
@@ -98,5 +100,16 @@ export const accountsService = {
       headers: await authHeaders(),
     });
     if (!res.ok) return parseError(res, "Failed to delete account");
+  },
+
+  // Send "default" to reset the preference back to General.
+  setPreferred: async (accountId: string): Promise<string> => {
+    const res = await fetch(`${BASE_URL}/preferred`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ accountId }),
+    });
+    if (!res.ok) return parseError(res, "Failed to set preferred account");
+    return (await res.json()).preferredAccountId;
   },
 };

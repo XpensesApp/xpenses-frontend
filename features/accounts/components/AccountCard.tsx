@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCardIcon, PencilIcon, StarIcon } from "lucide-react";
+import { CreditCardIcon, PencilIcon, PinIcon, StarIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 import { useTransactionsStore } from "@/store/transactions.store";
+import { useAccountsStore } from "@/store/accounts.store";
 import { computeAccountBalance } from "@/features/transactions/balance";
 import { formatDateTime } from "@/lib/dates";
 import { Account } from "../accounts.types";
@@ -19,7 +20,22 @@ type Props = {
 export function AccountCard({ account }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [settingPreferred, setSettingPreferred] = useState(false);
+  const [preferredError, setPreferredError] = useState<string | null>(null);
   const transactions = useTransactionsStore(state => state.transactions);
+  const setPreferredAccount = useAccountsStore(state => state.setPreferredAccount);
+
+  async function handleSetPreferred() {
+    setSettingPreferred(true);
+    setPreferredError(null);
+    try {
+      await setPreferredAccount(account.id);
+    } catch (error) {
+      setPreferredError(errorMessage(error, "No se pudo actualizar. Intenta de nuevo."));
+    } finally {
+      setSettingPreferred(false);
+    }
+  }
 
   const balance = computeAccountBalance(account, transactions);
   const isDebt = account.type === "credit";
@@ -44,6 +60,12 @@ export function AccountCard({ account }: Props) {
                 className="size-3.5 shrink-0 fill-current text-amber-500"
               />
             )}
+            {account.isPreferred && (
+              <PinIcon
+                aria-label="Cuenta predeterminada para nuevos movimientos"
+                className="size-3.5 shrink-0 fill-current text-primary"
+              />
+            )}
             {!account.isUntracked && (
               <span className="shrink-0 text-xs text-muted-foreground">
                 {accountTypeLabels[account.type]}
@@ -66,6 +88,7 @@ export function AccountCard({ account }: Props) {
               {pendingStatement.amount.toLocaleString()}
             </div>
           )}
+          {preferredError && <p className="text-xs text-destructive">{preferredError}</p>}
         </div>
 
         <div className="shrink-0 text-right">
@@ -92,6 +115,18 @@ export function AccountCard({ account }: Props) {
             onClick={() => setPayOpen(true)}
           >
             <CreditCardIcon />
+          </Button>
+        )}
+
+        {!account.isUntracked && !account.isPreferred && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Usar como cuenta predeterminada"
+            disabled={settingPreferred}
+            onClick={handleSetPreferred}
+          >
+            <PinIcon />
           </Button>
         )}
 

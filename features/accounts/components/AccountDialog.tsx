@@ -50,11 +50,16 @@ export function AccountDialog(props: Props) {
   const deleteAccount = useAccountsStore(state => state.deleteAccount);
   const loadAccounts = useAccountsStore(state => state.loadAccounts);
 
-  // The backend rejects both unconditionally: the default account can never
-  // be deleted, and any other one is refused (409) while it still has
-  // transactions — hiding the option here avoids a doomed round trip.
+  // The backend rejects all three unconditionally: the default account can
+  // never be deleted, any other one is refused (409) while it still has
+  // transactions, and the preferred account is refused (409) until another
+  // one is made preferred first — hiding the option here avoids a doomed
+  // round trip.
   const canDelete =
-    props.mode === "edit" && !props.account.isDefault && !props.account.transactionCount;
+    props.mode === "edit" &&
+    !props.account.isDefault &&
+    !props.account.transactionCount &&
+    !props.account.isPreferred;
 
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("debit");

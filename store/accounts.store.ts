@@ -8,6 +8,8 @@ type AccountsState = {
   addAccount: (account: Omit<Account, "id" | "balance" | "transactionCount">) => Promise<void>;
   updateAccount: (account: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
+  /** Preselects this account for new transactions going forward. "default" resets it to General. */
+  setPreferredAccount: (id: string) => Promise<void>;
 };
 
 export const useAccountsStore = create<AccountsState>(set => ({
@@ -38,6 +40,13 @@ export const useAccountsStore = create<AccountsState>(set => ({
     await accountsService.delete(id);
     set(state => ({
       accounts: state.accounts.filter(a => a.id !== id),
+    }));
+  },
+
+  setPreferredAccount: async (id) => {
+    const preferredAccountId = await accountsService.setPreferred(id);
+    set(state => ({
+      accounts: state.accounts.map(a => ({ ...a, isPreferred: a.id === preferredAccountId })),
     }));
   },
 }));

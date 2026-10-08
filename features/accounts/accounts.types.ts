@@ -14,6 +14,14 @@ export type Account = {
    */
   isDefault?: boolean;
   /**
+   * The account preselected for new transactions — the user's choice, not
+   * the backend's fallback (`isDefault`/General, which stays unchanged).
+   * Exactly one account always has this (General until the user picks
+   * another). Settable via `PUT /accounts/preferred`, including a credit
+   * card.
+   */
+  isPreferred?: boolean;
+  /**
    * Marks this account's money as set aside rather than freely spendable.
    * Transactions and payments linked to it are excluded from `actualBalance`
    * and instead counted in `savings` (see `computeBalances`) — the account
