@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { useTransactionsStore } from "@/store/transactions.store";
-import { usePaymentsStore } from "@/store/payments.store";
-import { countRemainingInstallments } from "@/features/transactions/balance";
+import { countPaidInstallments } from "@/features/transactions/balance";
 import { formatDateTime } from "@/lib/dates";
 import { Transaction } from "../transactions.types";
 import { TransactionDialog } from "./TransactionDialog";
@@ -33,13 +32,11 @@ export function TransactionCard({ transaction }: Props) {
     state.subscriptions.find(s => s.id === transaction.subscriptionId)
   );
   const allTransactions = useTransactionsStore(state => state.transactions);
-  const payments = usePaymentsStore(state => state.payments);
 
-  const isCreditPurchase = transaction.paymentDay != null;
-  const installmentProgress =
-    isCreditPurchase && transaction.accountId
-      ? countRemainingInstallments(transaction.id, transaction.accountId, allTransactions, payments)
-      : null;
+  const isCreditPurchase = transaction.type === "expense" && account?.type === "credit";
+  const installmentProgress = isCreditPurchase
+    ? countPaidInstallments(transaction.id, allTransactions)
+    : null;
   const hasRemainingDebt = !!installmentProgress && installmentProgress.paid < installmentProgress.total;
 
   const visibleCategories = transaction.categories.slice(0, MAX_VISIBLE_CATEGORIES);

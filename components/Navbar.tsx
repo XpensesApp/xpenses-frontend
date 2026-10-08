@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
-import { usePaymentsStore } from "@/store/payments.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 
 // Each page's own useEffect only starts loading data once it mounts — i.e.
@@ -33,8 +32,15 @@ const navItems = [
     prefetchData: () => {
       useTransactionsStore.getState().loadTransactions();
       useAccountsStore.getState().loadAccounts();
-      usePaymentsStore.getState().loadPayments();
       useSubscriptionsStore.getState().loadSubscriptions();
+    },
+  },
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    prefetchData: () => {
+      useTransactionsStore.getState().loadTransactions();
+      useAccountsStore.getState().loadAccounts();
     },
   },
   {
@@ -43,7 +49,6 @@ const navItems = [
     prefetchData: () => {
       useAccountsStore.getState().loadAccounts();
       useTransactionsStore.getState().loadTransactions();
-      usePaymentsStore.getState().loadPayments();
     },
   },
   {

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/Spinner";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useTransactionsStore } from "@/store/transactions.store";
-import { usePaymentsStore } from "@/store/payments.store";
 import { untrackedAccount } from "@/features/accounts/accounts.types";
 import { computeAccountBalance } from "@/features/transactions/balance";
 import { AccountCard } from "@/features/accounts/components/AccountCard";
@@ -16,21 +15,18 @@ import { TransactionDialog } from "@/features/transactions/components/Transactio
 export default function AccountsPage() {
     const { accounts, loadAccounts } = useAccountsStore();
     const { transactions, loadTransactions } = useTransactionsStore();
-    const { payments, loadPayments } = usePaymentsStore();
     const [createOpen, setCreateOpen] = useState(false);
     const [transferOpen, setTransferOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        Promise.all([loadAccounts(), loadTransactions(), loadPayments()]).finally(() =>
-            setIsLoading(false)
-        );
-    }, [loadAccounts, loadTransactions, loadPayments]);
+        Promise.all([loadAccounts(), loadTransactions()]).finally(() => setIsLoading(false));
+    }, [loadAccounts, loadTransactions]);
 
     // Hidden when $0 so it doesn't show up as a confusing empty account by default.
     const hasUntrackedBalance = useMemo(
-        () => computeAccountBalance(untrackedAccount, transactions, payments) !== 0,
-        [transactions, payments]
+        () => computeAccountBalance(untrackedAccount, transactions) !== 0,
+        [transactions]
     );
 
     const displayedAccounts = hasUntrackedBalance

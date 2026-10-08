@@ -3,6 +3,23 @@ import { Transaction, TransactionType } from "./transactions.types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL!;
 
+type WireStatementLine = {
+  transactionId: string;
+  title: string;
+  date: string;
+  installment: number;
+  installments: number;
+  amount: string;
+};
+
+type WireStatement = {
+  accountId: string;
+  installmentsDue: string;
+  previousBalance: string;
+  amountDue: string;
+  lines: WireStatementLine[];
+};
+
 type WireTransaction = {
   title: string;
   amount: string;
@@ -16,9 +33,9 @@ type WireTransaction = {
   accountId: string | null;
   targetAccountId: string | null;
   installments: number | null;
-  paymentDay: number | null;
   subscriptionId: string | null;
   billingPeriod: string | null;
+  statement: WireStatement | null;
 };
 
 export type TransactionsPage = {
@@ -47,15 +64,33 @@ function fromWire(wire: WireTransaction): Transaction {
     accountId: wire.accountId ?? undefined,
     targetAccountId: wire.targetAccountId ?? undefined,
     installments: wire.installments ?? undefined,
-    paymentDay: wire.paymentDay != null ? Number(wire.paymentDay) : undefined,
     subscriptionId: wire.subscriptionId ?? undefined,
     billingPeriod: wire.billingPeriod ?? undefined,
+    statement: wire.statement
+      ? {
+          accountId: wire.statement.accountId,
+          installmentsDue: Number(wire.statement.installmentsDue),
+          previousBalance: Number(wire.statement.previousBalance),
+          amountDue: Number(wire.statement.amountDue),
+          lines: wire.statement.lines.map(line => ({
+            transactionId: line.transactionId,
+            title: line.title,
+            date: line.date,
+            installment: line.installment,
+            installments: line.installments,
+            amount: Number(line.amount),
+          })),
+        }
+      : undefined,
   };
 }
 
 // The backend only stores a bare "YYYY-MM-DD" — the frontend's `date` can
 // carry a "YYYY-MM-DDTHH:mm" from the entry dialog's datetime-local input,
 // so the time portion is dropped here rather than sent and silently ignored.
+// `statement` is never sent: it's server-managed — ignored on create, and on
+// update the backend keeps it (along with `type`/`targetAccountId`) from the
+// stored item regardless of what's in this payload.
 function toWirePayload(transaction: Omit<Transaction, "id">) {
   return {
     title: transaction.title,
@@ -68,7 +103,6 @@ function toWirePayload(transaction: Omit<Transaction, "id">) {
     accountId: transaction.accountId ?? null,
     targetAccountId: transaction.targetAccountId ?? null,
     installments: transaction.installments ?? null,
-    paymentDay: transaction.paymentDay ?? null,
     subscriptionId: transaction.subscriptionId ?? null,
     billingPeriod: transaction.billingPeriod ?? null,
   };

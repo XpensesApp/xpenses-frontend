@@ -16,18 +16,43 @@ export type Transaction = {
   targetAccountId?: string;
   /** Number of installments ("cuotas") this entry is split into. Only relevant for credit purchases. */
   installments?: number;
-  /**
-   * The credit account's payment day, snapshotted at the moment of purchase.
-   * Its presence — not the currently-linked account's type — is the permanent
-   * signal that this entry is a credit purchase. Never re-derived from the
-   * live account, so editing or deleting a card never rewrites the schedule
-   * of past purchases.
-   */
-  paymentDay?: number;
-  /** True for an entry auto-generated from a subscription that hasn't been paid/confirmed yet. */
+  /** True for an entry auto-generated from a subscription — or, since the credit-card statement job, from a card's billing — that hasn't been paid/confirmed yet. */
   pending: boolean;
   /** Links this entry back to the subscription that generated it, if any. */
   subscriptionId?: string;
   /** The billing cycle ("YYYY-MM") this entry belongs to, set once at creation and never changed — even once paid — so we know which cycles already have an entry regardless of when it was actually paid. */
   billingPeriod?: string;
+  /**
+   * Present only on a credit card's monthly statement — a server-generated
+   * `transfer` (pending until paid) from whichever account settles it into
+   * the card. Server-managed: the backend always keeps `type`,
+   * `targetAccountId` and this field from the stored item regardless of what
+   * a `PUT` sends, and ignores it entirely on `POST`. A card only ever has
+   * one pending statement at a time; an unpaid one is replaced by next
+   * month's, which folds its full amount into `previousBalance`.
+   */
+  statement?: StatementInfo;
+};
+
+export type StatementLine = {
+  /** The purchase this cuota belongs to. */
+  transactionId: string;
+  title: string;
+  date: string;
+  /** Which cuota this is (1-based) and how many the purchase was split into. */
+  installment: number;
+  installments: number;
+  amount: number;
+};
+
+export type StatementInfo = {
+  /** The credit account this statement bills. */
+  accountId: string;
+  /** This cycle's cuotas across every active purchase. */
+  installmentsDue: number;
+  /** Whatever was still owed from the previous statement. */
+  previousBalance: number;
+  /** What's due now (`installmentsDue + previousBalance`, net of any payments/refunds since). Can be negative — a credit from overpaying — in which case the transaction's own `amount` is `0`. */
+  amountDue: number;
+  lines: StatementLine[];
 };

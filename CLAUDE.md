@@ -62,8 +62,8 @@ Current example:
 features/
   transactions/
     transactions.types.ts
-    transactions.mock.ts
     transactions.service.ts
+    balance.ts
     components/
 ```
 
@@ -79,39 +79,25 @@ When a new feature is added, first determine whether existing architecture can s
 
 ## 4. Data Layer
 
-**Current state**: mixed. `Transaction`, `Subscription`, and `Account` are real backend entities, served by an AWS API Gateway + Lambda backend (base URLs in `NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL` / `NEXT_PUBLIC_SUBSCRIPTIONS_API_BASE_URL` / `NEXT_PUBLIC_ACCOUNTS_API_BASE_URL`, called directly from the browser). `Payment` is still an in-memory mock service (and, being client-side module state rather than anything persisted, doesn't even survive a page reload).
-
-Current flow for a migrated entity (e.g. Transactions):
+**Current state**: `Transaction`, `Subscription`, and `Account` are real backend entities, served by an AWS API Gateway + Lambda backend (base URLs in `NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL` / `NEXT_PUBLIC_SUBSCRIPTIONS_API_BASE_URL` / `NEXT_PUBLIC_ACCOUNTS_API_BASE_URL`, called directly from the browser). There is no separate `Payment` entity — a credit-card payment is just a `transfer`-type `Transaction` targeting the card, like any other.
 
 ```text
 UI
  ↓
 Zustand store
  ↓
-transactions.service
+<entity>.service
  ↓
 real backend (fetch)
 ```
 
-Current flow for a not-yet-migrated entity (e.g. Payments):
-
-```text
-UI
- ↓
-Zustand store
- ↓
-payments.service
- ↓
-in-memory mock data
-```
-
-Every migrated backend is protected by a Cognito Lambda Authorizer: every request needs `Authorization: Bearer <token>` (see `lib/current-auth-token.ts`, which reads the Cognito ID token `auth.ts` persisted onto the session at sign-in — see its `jwt`/`session` callbacks and `next-auth.d.ts`'s session type augmentation). The caller's identity is derived from the verified token, not sent as a field — request/response bodies no longer carry `email` at all. Known gap: the stored ID token isn't refreshed, so it can expire (~1h) well before the app's own session does, causing API calls to start 401ing without prompting a fresh sign-in — no refresh flow is implemented yet. The service layer adapts each entity's wire shape (e.g. `transactionId`/`accountId` vs `id`, decimal-string amounts, `null` vs `undefined` for unset optionals) at the boundary, so the rest of the app keeps using its own established types.
+Every backend is protected by a Cognito Lambda Authorizer: every request needs `Authorization: Bearer <token>` (see `lib/current-auth-token.ts`, which reads the Cognito ID token `auth.ts` persisted onto the session at sign-in — see its `jwt`/`session` callbacks and `next-auth.d.ts`'s session type augmentation). The caller's identity is derived from the verified token, not sent as a field — request/response bodies no longer carry `email` at all. Known gap: the stored ID token isn't refreshed, so it can expire (~1h) well before the app's own session does, causing API calls to start 401ing without prompting a fresh sign-in — no refresh flow is implemented yet. The service layer adapts each entity's wire shape (e.g. `transactionId`/`accountId` vs `id`, decimal-string amounts, `null` vs `undefined` for unset optionals) at the boundary, so the rest of the app keeps using its own established types.
 
 ### Accounts
 
 Every user has exactly one fixed `accountId: "default"` account (created idempotently by `POST /auth/sync` on every login), used whenever a transaction omits `accountId` — there's no API to change which account is the default, only to rename it, so the frontend no longer offers a way to mark a different account as default (it reads `isDefault` from the backend, read-only). Because every transaction now always lands on some real account, the frontend's "untracked" concept (an entry linked to no account at all, see "Financial data model" below) can no longer be newly created against this backend — choosing "Sin cuenta" in `TransactionDialog` now behaves the same as explicitly picking the default account. The synthetic untracked bucket is kept only for displaying whatever pre-existing accountless transactions already exist, per the "must keep working" rule below.
 
-Each account also carries a server-maintained `balance` (plus the `openingBalance` it was seeded with, and `transactionCount`) kept correct from that account's transactions alone — `computeAccountBalance`/`computeBalances` (`features/transactions/balance.ts`) read it directly instead of summing `transactions`, which matters now that `GET /transactions` is paginated by date range and the frontend never necessarily holds an account's full history. Payments (still mock-only) aren't reflected in the backend's `balance`, so they're always applied on top of it locally. Deleting an account is refused (409) while `transactionCount > 0`, and the default account can never be deleted at all — `AccountDialog` hides its own delete option in both cases rather than relying on the round trip failing.
+Each account also carries a server-maintained `balance` (plus the `openingBalance` it was seeded with, and `transactionCount`) kept correct from that account's transactions alone — every transaction create/update/delete (including paying off a credit card) updates it atomically, so `computeAccountBalance`/`computeBalances` (`features/transactions/balance.ts`) read it directly instead of summing `transactions`, which matters now that `GET /transactions` is paginated by date range and the frontend never necessarily holds an account's full history. Deleting an account is refused (409) while `transactionCount > 0`, and the default account can never be deleted at all — `AccountDialog` hides its own delete option in both cases rather than relying on the round trip failing.
 
 ### Future backend
 
@@ -137,17 +123,19 @@ Zustand is better suited to client-side state that genuinely benefits from centr
 
 ### Financial data model
 
-Credit-card debt (`features/transactions/balance.ts`) only persists facts: a purchase (an expense linked to an account, with the card's payment day snapshotted onto it at the time of purchase), a payment (amount, date, source account), and the account itself (whose backend-maintained `balance` is now one more such fact — see "Accounts" above). What's due now, upcoming obligations, and remaining installments are always computed from those facts, never stored — check whether a new "how much/when" value is derivable before adding a field for it. The one exception is the plain total-debt scalar (`computeAccountBalance`'s credit branch): it reads the account's `balance` directly rather than re-deriving it from `transactions`, since the two are mathematically equivalent (see that function's comment) and `balance` stays correct regardless of how much purchase history is actually loaded. The per-installment breakdown (which due date, how many paid) has no such shortcut and still needs every relevant purchase transaction loaded for that account.
+**Credit-card billing is computed server-side, by a daily job, the same pattern as the (not yet implemented) subscription due-job.** A purchase is a full `expense` on the card (`accountId` = the card, optional `installments`, full amount — the backend splits it into cuotas, not the frontend). Each month the job bills whichever cuotas are due into a **statement**: a regular `Transaction` with `type: "transfer"` (`accountId`: whoever it'll be paid from, defaulting to `"default"`; `targetAccountId`: the card), `pending: true`, and a non-null `statement` field (`Transaction.statement` — `installmentsDue`, `previousBalance`, `amountDue`, and a `lines[]` breakdown of which purchases/cuotas it covers). A card only ever has one pending statement at a time; an unpaid one is replaced by the next month's, which folds its full amount into that one's `previousBalance`.
 
-A purchase's snapshotted payment day is never re-read from the account afterward, so editing a card's settings never rewrites the schedule of past purchases. A payment is never linked to a specific purchase; attribution (which purchase it "covers") is always recomputed, oldest obligation first.
+The frontend never computes due dates, installment schedules, or "what's owed now" itself — that all lives in `statement`, read directly off whichever transaction currently has one. **Don't reintroduce client-side ledger math for this** (there used to be one, in `features/transactions/balance.ts`; it's gone). The one thing `features/transactions/balance.ts` still derives client-side is `countPaidInstallments` — "how many of this purchase's cuotas have a settled statement" — by scanning loaded transactions' `statement.lines` for ones referencing it; this only covers whatever statements happen to be loaded, same caveat paginated history always has elsewhere.
 
-A credit account can also carry income entries (refunds), same payment-day snapshotting as a purchase. A refund never creates its own installment schedule — it has no installments — and is instead folded into the same pool as payments, reducing the oldest outstanding installments first.
+**Paying a card** is just settling a pending transaction, the same mechanism as paying a pending subscription entry: open it in `TransactionDialog`, pick which account it's paid from (`accountId`), optionally adjust `amount` (less than `amountDue` carries the rest into next month, more becomes a credit), and save with `pending: false`. `type`, `targetAccountId` and `statement` are server-managed on a statement — the backend keeps them from the stored item regardless of what's sent, and `TransactionDialog` hides those fields entirely for one (showing the breakdown instead) rather than exposing controls that wouldn't take effect. **Never delete a statement transaction** — the job regenerates it on its next run, so a delete just re-appears. `TransactionDialog` hides the delete option for one.
 
-Accounts remain optional on every transaction — do not make account selection required; the account field must stay something the user can leave untouched on the fast-entry path. An entry with no account is "untracked" and is treated as a direct cash movement. `/accounts` represents all untracked entries as a synthetic, non-persisted "Untracked" account (`features/accounts/accounts.types.ts`'s `untrackedAccount`) so their net balance is visible the same way a real account's is; it's injected only for display (never created/edited/deleted through the accounts store) and only shown once its balance is non-zero. See "Accounts" above: against the current backend this bucket can no longer grow with genuinely new entries (every transaction always lands on a real account, "default" if none is chosen), so it only still matters for whatever pre-existing accountless transactions are already there.
+A credit card is not excluded from being a transfer's *destination* — paying down a card, statement or not, is a transfer into it like any other, and "any other transfer into the card" is one of the things the backend's billing counts as a payment (so is a refund: an `income` on the card). It's still excluded as a transfer *source* (`accountId`) — a card tracks debt, not spendable money, so there's nothing to move "from" it.
 
-An account can be marked `isSavings` (mutually exclusive with `type === "credit"` — reset to `undefined` if the type is switched to credit). Its own balance (`computeAccountBalance`) is unaffected — it's tracked exactly like any other account, and transactions/payments against it work normally. The only difference is at the aggregate level: `computeBalances` routes anything linked to a savings account into a separate `savings` figure instead of `actualBalance`, so it's excluded from "money you can freely spend" while still counted in `generalBalance` (`actualBalance + savings - debt`, i.e. true net worth).
+Accounts remain optional on every transaction — do not make account selection required; the account field must stay something the user can leave untouched on the fast-entry path. An entry with no account is "untracked" and is treated as a direct cash movement. `/accounts` represents all untracked entries as a synthetic, non-persisted "Untracked" account (`features/accounts/accounts.types.ts`'s `untrackedAccount`) so their net balance is visible the same way a real account's is; it's injected only for display (never created/edited/deleted through the accounts store) and only shown once its balance is non-zero. Against the current backend this bucket can no longer grow with genuinely new entries (every transaction always lands on a real account, "default" if none is chosen), so it only still matters for whatever pre-existing accountless transactions are already there.
 
-A `Transaction` can also be `type: "transfer"` — money moved between two of the user's own accounts in one record, rather than an expense + an income. Both `accountId` (source) and `targetAccountId` (destination) are required and must differ; it's an outflow for the source and an inflow for the target. `TransactionDialog` excludes credit accounts from both pickers (a card tracks debt, not spendable money — paying/charging one already has its own flow via `AccountPaymentDialog`) and hides categories (a transfer isn't spending or income to categorize). Both `computeBalances` and `computeAccountBalance` handle a transfer's two sides independently — each side lands in whichever bucket (`actualBalance`/`savings`) that specific account belongs to, so e.g. a transfer into a savings account correctly moves money out of `actualBalance` and into `savings` rather than netting to zero. A transfer never gets `paymentDay` set (it would otherwise be mistaken for a credit purchase by `getCardLedger`/`computeBalances`'s skip-if-billed check). The movements list's account filter matches a transfer by either `accountId` or `targetAccountId`.
+An account can be marked `isSavings` (mutually exclusive with `type === "credit"` — reset to `undefined` if the type is switched to credit). Its own balance (`computeAccountBalance`) is unaffected — it's tracked exactly like any other account, and transactions against it work normally. The only difference is at the aggregate level: `computeBalances` routes anything linked to a savings account into a separate `savings` figure instead of `actualBalance`, so it's excluded from "money you can freely spend" while still counted in `generalBalance` (`actualBalance + savings - debt`, i.e. true net worth).
+
+A `Transaction` can also be `type: "transfer"` — money moved between two of the user's own accounts in one record, rather than an expense + an income. Both `accountId` (source) and `targetAccountId` (destination) are required and must differ; it's an outflow for the source and an inflow for the target. `TransactionDialog` hides categories for one (a transfer isn't spending or income to categorize). Both `computeBalances` and `computeAccountBalance` handle a transfer's two sides independently — each side lands in whichever bucket (`actualBalance`/`savings`) that specific account belongs to, so e.g. a transfer into a savings account correctly moves money out of `actualBalance` and into `savings` rather than netting to zero. The movements list's account filter matches a transfer by either `accountId` or `targetAccountId`.
 
 ---
 
@@ -286,6 +274,8 @@ Implemented as Subscriptions (`features/subscriptions/`). A subscription has a t
 Subscriptions and Transactions are both real backend entities now (`NEXT_PUBLIC_SUBSCRIPTIONS_API_BASE_URL` / `NEXT_PUBLIC_TRANSACTIONS_API_BASE_URL`). "Creating a pending entry when a subscription is due" is a backend job, not yet implemented there — the frontend no longer simulates it (the old client-side `syncDueEntries` was removed once the backend took over subscription CRUD, since duplicating that logic per-client doesn't scale, and the backend has the daily/scheduled job as the natural place for it). Until that job ships, due subscriptions simply won't generate a pending entry. Paying a pending entry (via the normal entry dialog) assigns it an account and clears `pending`.
 
 Recurrence is monthly-only, driven by a single day-of-month. Arbitrary periods (e.g. "every 5 days") are not implemented.
+
+Credit-card billing (see "Financial data model" in §4) follows this same due-job shape and is already live: a daily job generates a pending `statement` transaction per card instead of per subscription. If the subscription due-job ever ships, expect it to converge on the same "pending entry you settle through the normal dialog" mechanics statements already use.
 
 ### Budgets
 

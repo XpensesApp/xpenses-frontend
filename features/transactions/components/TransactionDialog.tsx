@@ -76,13 +76,17 @@ export function TransactionDialog(props: Props) {
   const selectedAccount = accounts.find(a => a.id === accountId);
   const isCreditSelected = selectedAccount?.type === "credit";
   const isPaying = props.mode === "edit" && props.transaction.pending;
+  const statement = props.mode === "edit" ? props.transaction.statement : undefined;
+  const isStatement = !!statement;
+  const statementAccount = statement ? accounts.find(a => a.id === statement.accountId) : undefined;
   const installmentsApply = isCreditSelected && type === "expense";
   const isTransfer = type === "transfer";
-  // Credit accounts track debt, not spendable money — paying/charging one
-  // already has its own dedicated flow (AccountPaymentDialog), so they're
-  // excluded here rather than half-supporting a transfer that wouldn't
-  // actually move the card's debt.
-  const transferableAccounts = accounts.filter(a => a.type !== "credit");
+  // A credit card can't be a transfer's source — it tracks debt, not
+  // spendable money, so there's nothing to move "from" it. It CAN be a
+  // destination (paying a card down), including the card's own
+  // auto-generated statement above.
+  const transferSourceAccounts = accounts.filter(a => a.type !== "credit");
+  const transferDestinationAccounts = accounts.filter(a => a.id !== accountId);
 
   function addCategory(value: string) {
     const trimmed = value.trim();
@@ -174,16 +178,6 @@ export function TransactionDialog(props: Props) {
       }
     }
 
-    const accountUnchanged =
-      props.mode === "edit" &&
-      !isPaying &&
-      accountId === (props.transaction.accountId ?? NO_ACCOUNT);
-
-    if (!isTransfer && !accountUnchanged && isCreditSelected && selectedAccount?.paymentDay == null) {
-      setError("Esta tarjeta no tiene día de pago configurado. Edítala en Cuentas antes de usarla.");
-      return;
-    }
-
     const resolvedAccountId = accountId === NO_ACCOUNT ? undefined : accountId;
     const resolvedTargetAccountId =
       isTransfer && targetAccountId !== NO_ACCOUNT ? targetAccountId : undefined;
@@ -195,15 +189,6 @@ export function TransactionDialog(props: Props) {
       : pendingCategory && !categories.includes(pendingCategory)
         ? [...categories, pendingCategory]
         : categories;
-
-    let resolvedPaymentDay: number | undefined;
-    if (isTransfer) {
-      resolvedPaymentDay = undefined;
-    } else if (props.mode === "edit" && accountUnchanged) {
-      resolvedPaymentDay = props.transaction.paymentDay;
-    } else {
-      resolvedPaymentDay = isCreditSelected ? selectedAccount?.paymentDay : undefined;
-    }
 
     setSaving(true);
     setError(null);
@@ -221,7 +206,6 @@ export function TransactionDialog(props: Props) {
           accountId: resolvedAccountId,
           targetAccountId: resolvedTargetAccountId,
           installments: resolvedInstallments,
-          paymentDay: resolvedPaymentDay,
           pending: false,
         });
       } else {
@@ -235,7 +219,6 @@ export function TransactionDialog(props: Props) {
           accountId: resolvedAccountId,
           targetAccountId: resolvedTargetAccountId,
           installments: resolvedInstallments,
-          paymentDay: resolvedPaymentDay,
           pending: false,
         });
       }
@@ -275,11 +258,13 @@ export function TransactionDialog(props: Props) {
         <DialogHeader>
           <DialogTitle>
             {props.mode === "edit"
-              ? isPaying
-                ? "Pagar suscripción"
-                : isTransfer
-                  ? "Editar transferencia"
-                  : "Editar movimiento"
+              ? isStatement
+                ? `Pagar ${statementAccount?.name ?? "tarjeta"}`
+                : isPaying
+                  ? "Pagar suscripción"
+                  : isTransfer
+                    ? "Editar transferencia"
+                    : "Editar movimiento"
               : isTransfer
                 ? "Nueva transferencia"
                 : "Nuevo movimiento"}
@@ -287,50 +272,81 @@ export function TransactionDialog(props: Props) {
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Tipo</label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={type === "expense" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setType("expense")}
-              >
-                Gasto
-              </Button>
-              <Button
-                type="button"
-                variant={type === "income" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setType("income")}
-              >
-                Ingreso
-              </Button>
-              <Button
-                type="button"
-                variant={type === "transfer" ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setType("transfer");
-                  // A credit account can't be a transfer's source (it tracks
-                  // debt, not spendable money) — clear it rather than leave a
-                  // now-invalid, hidden-from-the-dropdown selection in place.
-                  if (isCreditSelected) {
-                    setAccountId(NO_ACCOUNT);
-                    setUseInstallments(false);
-                    setInstallments("");
-                  }
-                }}
-              >
-                Transferencia
-              </Button>
+          {isStatement && statement && (
+            <div className="space-y-1 rounded-lg border p-3 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Saldo anterior</span>
+                <span className="tabular-nums">${statement.previousBalance.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Cuotas de este mes</span>
+                <span className="tabular-nums">${statement.installmentsDue.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Total a pagar</span>
+                <span className="tabular-nums">${statement.amountDue.toLocaleString()}</span>
+              </div>
+              {statement.lines.length > 0 && (
+                <ul className="pt-1 text-xs text-muted-foreground">
+                  {statement.lines.map(line => (
+                    <li key={`${line.transactionId}-${line.installment}`} className="flex justify-between">
+                      <span className="truncate">
+                        {line.title} ({line.installment}/{line.installments})
+                      </span>
+                      <span className="shrink-0 tabular-nums">${line.amount.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {isCreditSelected && type === "income" && (
-              <p className="text-xs text-muted-foreground">
-                Se registrará como un reembolso que reduce la deuda de la tarjeta.
-              </p>
-            )}
-          </div>
+          )}
+
+          {!isStatement && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Tipo</label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={type === "expense" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setType("expense")}
+                >
+                  Gasto
+                </Button>
+                <Button
+                  type="button"
+                  variant={type === "income" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setType("income")}
+                >
+                  Ingreso
+                </Button>
+                <Button
+                  type="button"
+                  variant={type === "transfer" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setType("transfer");
+                    // A credit account can't be a transfer's source (it tracks
+                    // debt, not spendable money) — clear it rather than leave a
+                    // now-invalid, hidden-from-the-dropdown selection in place.
+                    if (isCreditSelected) {
+                      setAccountId(NO_ACCOUNT);
+                      setUseInstallments(false);
+                      setInstallments("");
+                    }
+                  }}
+                >
+                  Transferencia
+                </Button>
+              </div>
+              {isCreditSelected && type === "income" && (
+                <p className="text-xs text-muted-foreground">
+                  Se registrará como un reembolso que reduce la deuda de la tarjeta.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Nombre</label>
@@ -420,7 +436,7 @@ export function TransactionDialog(props: Props) {
 
           <div className="space-y-1">
             <label className="text-sm font-medium">
-              {isTransfer ? "Cuenta origen" : "Cuenta (opcional)"}
+              {isStatement ? "Pagar desde" : isTransfer ? "Cuenta origen" : "Cuenta (opcional)"}
             </label>
             <Select
               value={accountId}
@@ -435,7 +451,7 @@ export function TransactionDialog(props: Props) {
               </SelectTrigger>
               <SelectContent>
                 {!isTransfer && <SelectItem value={NO_ACCOUNT}>Sin cuenta</SelectItem>}
-                {(isTransfer ? transferableAccounts : accounts).map(account => (
+                {(isTransfer ? transferSourceAccounts : accounts).map(account => (
                   <SelectItem key={account.id} value={account.id}>
                     {account.name}
                   </SelectItem>
@@ -444,24 +460,32 @@ export function TransactionDialog(props: Props) {
             </Select>
           </div>
 
-          {isTransfer && (
+          {/* A statement's destination is always its own card — fixed server-side
+              regardless of what's sent, so it's shown read-only rather than as a
+              picker the user could change but that wouldn't actually take effect. */}
+          {isStatement ? (
             <div className="space-y-1">
-              <label className="text-sm font-medium">Cuenta destino</label>
-              <Select value={targetAccountId} onValueChange={setTargetAccountId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecciona una cuenta" />
-                </SelectTrigger>
-                <SelectContent>
-                  {transferableAccounts
-                    .filter(account => account.id !== accountId)
-                    .map(account => (
+              <label className="text-sm font-medium">Tarjeta</label>
+              <p className="text-sm text-muted-foreground">{statementAccount?.name ?? "—"}</p>
+            </div>
+          ) : (
+            isTransfer && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Cuenta destino</label>
+                <Select value={targetAccountId} onValueChange={setTargetAccountId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecciona una cuenta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {transferDestinationAccounts.map(account => (
                       <SelectItem key={account.id} value={account.id}>
                         {account.name}
                       </SelectItem>
                     ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  </SelectContent>
+                </Select>
+              </div>
+            )
           )}
 
           {installmentsApply && (
@@ -504,7 +528,7 @@ export function TransactionDialog(props: Props) {
         </div>
 
         <DialogFooter className={props.mode === "edit" ? "sm:justify-between" : undefined}>
-          {props.mode === "edit" && (
+          {props.mode === "edit" && !isStatement && (
             confirmingDelete ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">

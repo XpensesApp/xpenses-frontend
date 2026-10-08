@@ -1,8 +1,85 @@
-# Handoff — Latest Backend Updates (2026-10-05)
+# Handoff — Latest Backend Updates
 
-What changed in the API since the last handoff, what the frontend has to change, and what's already done on the data side. Field-by-field reference lives in `transactions-endpoint-handoff.md` (transactions + accounts) and `subscription_handoff.md`. Every request below is in `postman-collection.json`.
+Newest first. Field-by-field reference lives in `transactions-endpoint-handoff.md` (transactions + accounts) and `subscription_handoff.md`. Every request below is in `postman-collection.json`.
 
-All of this is **deployed to prod** (`xpenses-backend-prod`).
+---
+
+# 2026-10-07 — Credit card statements (built, **not deployed yet**)
+
+Card purchases can now be split into installments ("cuotas"), and every credit card gets one pending payment per month, like a subscription.
+
+## TL;DR: frontend action items
+
+1. **Installment purchases:** create the purchase as usual (an `expense` with `accountId` = the card) and set `installments` to the number of cuotas. Leave it unset (or `1`) for a single payment. Send the **full** purchase amount; the backend splits it.
+2. **Show the monthly statement:** it's a regular transaction in `GET /transactions` with a non-null `statement` field: a pending `transfer` from the default account into the card.
+3. **Pay it:** `PUT` the statement with `amount` = what was actually paid (can be less or more than due), `pending: false` and `accountId` = the account it was paid from.
+4. **Don't delete statements.** The job regenerates a deleted one on its next run. To skip a month, just leave it pending; it rolls into the next one.
+
+## How it works
+
+- **Purchase:** a full `expense` on the card at purchase time, so the card's `balance` shows the whole debt (`-120000` for a 120.000 TV in 12 cuotas).
+- **Due date:** the card's `paymentDay` (clamped to the month's length). A purchase made **before** the due date is first billed on that due date; one made **on or after** it goes to the next month. Cuota *k* is billed on the *k*-th due date from there.
+- **Each cuota:** the amount ÷ installments, rounded down to whole pesos (or to the amount's decimals), with the remainder on the last one. 100.000 in 3 → 33.333, 33.333, 33.334.
+- **Statement amount** = this month's cuotas from every active purchase + whatever is still owed from the last statement.
+- **Payments that count:** paying the statement, any other `transfer` into the card, and refunds (`income` on the card) between one statement and the next. Partial payments and overpayments carry over automatically. An overpayment becomes a credit that lowers the next statement.
+- **An unpaid statement** is replaced by the next month's, which includes its full amount in `previousBalance`. A card only ever has one pending statement.
+- **Generated daily at 03:15 Chile time.** If a run is missed, the next one catches up on the card's most recent due date.
+
+## The statement transaction
+
+```json
+{
+  "title": "Pago CMR 2026-11-04",
+  "amount": "20500",
+  "date": "2026-11-04",
+  "type": "transfer",
+  "pending": true,
+  "affectsBalance": true,
+  "accountId": "default",
+  "targetAccountId": "5",
+  "transactionId": "statement-5-2026-11-04",
+  "billingPeriod": "2026-11",
+  "statement": {
+    "accountId": "5",
+    "installmentsDue": "13000",
+    "previousBalance": "7500",
+    "amountDue": "20500",
+    "lines": [
+      { "transactionId": "…", "title": "TV", "date": "2026-09-10", "installment": 2, "installments": 12, "amount": "10000" },
+      { "transactionId": "…", "title": "Biombo", "date": "2026-10-05", "installment": 1, "installments": 1, "amount": "3000" }
+    ]
+  }
+}
+```
+
+- `statement` is **server-managed**. On `PUT`, a statement's `type`, `targetAccountId` and `statement` are always kept from the stored item, whatever you send. On `POST`, any `statement` you send is ignored.
+- `statement.amountDue` can be negative (credit), in which case `amount` is `"0"`.
+- `installment`/`installments` come back as numbers. The amounts are decimal strings like everywhere else.
+- Every other transaction has `"statement": null`.
+
+## Also fixed
+
+- `PUT /transactions` and `POST /transactions` now ignore a client-sent `sk`; the key always comes from `date` + `transactionId`. Before, a mismatched `sk` could store the transaction under the wrong key.
+
+## Postman
+
+Three new requests, all of which work once this is deployed:
+
+- **Accounts → Create Credit Card**: a `credit` account with `paymentDay: 5`, saved as `{{cardAccountId}}`.
+- **Transactions → Create Installment Purchase**: a 120.000 `expense` on `{{cardAccountId}}` in 12 `installments`, so the card balance goes to `-120000`.
+- **Transactions → Pay Card Statement**: settles a pending statement with its full `amountDue` from `{{accountId}}`. Lower the `amount` to try a partial payment.
+
+The statement itself comes from the daily job, so it can't be created from Postman. "List Transactions" now remembers a pending statement if its page contains one. "Pay Card Statement" is skipped until a statement exists: the card needs a due date to pass after the purchase, and the list's date range needs to include that due date.
+
+## When this is deployed
+
+The first run catches up on each card's most recent due date. For CMR (`paymentDay` currently **4**), that's a pending **"Pago CMR 2026-10-04" for 143.887**, covering the 16 purchases from 2026-09-07 to 2026-10-01. If that bill was already paid outside the app, settle it with the real amount and source account; that also records the payment on the CMR balance.
+
+---
+
+# 2026-10-05 — Accounts, transfers, paging
+
+All of this section is **deployed to prod** (`xpenses-backend-prod`).
 
 ---
 

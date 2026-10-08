@@ -7,12 +7,9 @@ import { Spinner } from "@/components/Spinner";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
-import { usePaymentsStore } from "@/store/payments.store";
-import { normalizeForSearch, cn } from "@/lib/utils";
-import { computeBalances } from "@/features/transactions/balance";
+import { normalizeForSearch } from "@/lib/utils";
 import { TransactionCard } from "@/features/transactions/components/TransactionCard";
 import { CreateTransactionDialog } from "@/features/transactions/components/CreateTransactionDialog";
-import { PaymentCard } from "@/features/payments/components/PaymentCard";
 import { UpcomingCardPayments } from "@/features/accounts/components/UpcomingCardPayments";
 import {
     TransactionFilters,
@@ -25,7 +22,6 @@ export default function MovementsPage() {
         useTransactionsStore();
     const { accounts, loadAccounts } = useAccountsStore();
     const { loadSubscriptions } = useSubscriptionsStore();
-    const { payments, loadPayments } = usePaymentsStore();
     const [filters, setFilters] = useState<TransactionFiltersState>(emptyTransactionFilters);
     const [showFilters, setShowFilters] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -36,27 +32,18 @@ export default function MovementsPage() {
         Promise.all([
             loadTransactions(),
             loadAccounts(),
-            loadPayments(),
             loadSubscriptions(),
         ]).finally(() => setIsLoading(false));
-    }, [loadTransactions, loadAccounts, loadPayments, loadSubscriptions]);
-
-    const { actualBalance, savings, debt, generalBalance } = useMemo(() => {
-        return computeBalances(transactions, payments, accounts);
-    }, [transactions, payments, accounts]);
+    }, [loadTransactions, loadAccounts, loadSubscriptions]);
 
     const categories = useMemo(() => {
         return Array.from(new Set(transactions.flatMap(t => t.categories)));
     }, [transactions]);
 
-    // Credit-card payments are movements too (a real cash outflow), shown
-    // alongside transactions in the same list — but they have no title/category
-    // of their own, so search matches a synthetic "pago <card>" label and a
-    // category filter always excludes them, same as an uncategorized transaction.
-    const movements = useMemo(() => {
+    const sortedMovements = useMemo(() => {
         const search = normalizeForSearch(filters.search.trim());
 
-        const filteredTransactions = transactions.filter(transaction => {
+        const filtered = transactions.filter(transaction => {
             if (search && !normalizeForSearch(transaction.title).includes(search)) {
                 return false;
             }
@@ -73,42 +60,7 @@ export default function MovementsPage() {
             return true;
         });
 
-        const filteredPayments = payments.filter(payment => {
-            if (filters.category) return false;
-            if (
-                filters.account &&
-                payment.cardAccountId !== filters.account &&
-                payment.sourceAccountId !== filters.account
-            ) {
-                return false;
-            }
-            if (search) {
-                const cardName = accounts.find(a => a.id === payment.cardAccountId)?.name ?? "";
-                if (!normalizeForSearch(`pago ${cardName}`).includes(search)) return false;
-            }
-            return true;
-        });
-
-        return [
-            ...filteredTransactions.map(transaction => ({
-                kind: "transaction" as const,
-                id: transaction.id,
-                date: transaction.date,
-                amount: transaction.amount,
-                transaction,
-            })),
-            ...filteredPayments.map(payment => ({
-                kind: "payment" as const,
-                id: payment.id,
-                date: payment.date,
-                amount: payment.amount,
-                payment,
-            })),
-        ];
-    }, [transactions, payments, accounts, filters]);
-
-    const sortedMovements = useMemo(() => {
-        const list = [...movements];
+        const list = [...filtered];
 
         switch (filters.sort) {
             case "date-asc":
@@ -122,37 +74,10 @@ export default function MovementsPage() {
             default:
                 return list;
         }
-    }, [movements, filters.sort]);
+    }, [transactions, filters]);
 
     return (
         <section className="p-6 space-y-8">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <BalanceTile
-                    label="Balance general (considera deuda)"
-                    value={generalBalance}
-                    isLoading={isLoading}
-                    isNegative={generalBalance < 0}
-                />
-                <BalanceTile
-                    label="Balance actual (sin deuda)"
-                    value={actualBalance}
-                    isLoading={isLoading}
-                    isNegative={actualBalance < 0}
-                />
-                <BalanceTile
-                    label="Ahorros"
-                    value={savings}
-                    isLoading={isLoading}
-                    isNegative={savings < 0}
-                />
-                <BalanceTile
-                    label="Deuda pendiente"
-                    value={debt}
-                    isLoading={isLoading}
-                    isNegative={debt > 0}
-                />
-            </div>
-
             <UpcomingCardPayments />
 
             <div className="space-y-3">
@@ -193,13 +118,9 @@ export default function MovementsPage() {
                 ) : (
                     <>
                         <ul className="space-y-2">
-                            {sortedMovements.map(movement =>
-                                movement.kind === "transaction" ? (
-                                    <TransactionCard key={`transaction-${movement.id}`} transaction={movement.transaction} />
-                                ) : (
-                                    <PaymentCard key={`payment-${movement.id}`} payment={movement.payment} />
-                                )
-                            )}
+                            {sortedMovements.map(transaction => (
+                                <TransactionCard key={transaction.id} transaction={transaction} />
+                            ))}
                         </ul>
 
                         {sortedMovements.length === 0 && (
@@ -225,35 +146,5 @@ export default function MovementsPage() {
                 )}
             </div>
         </section>
-    );
-}
-
-function BalanceTile({
-    label,
-    value,
-    isLoading,
-    isNegative,
-}: {
-    label: string;
-    value: number;
-    isLoading: boolean;
-    isNegative: boolean;
-}) {
-    return (
-        <div className="space-y-1 rounded-lg border p-4">
-            <span className="text-sm font-medium text-muted-foreground">{label}</span>
-            {isLoading ? (
-                <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
-            ) : (
-                <p
-                    className={cn(
-                        "text-2xl font-semibold tabular-nums",
-                        isNegative ? "text-expense" : "text-income"
-                    )}
-                >
-                    ${value.toLocaleString()}
-                </p>
-            )}
-        </div>
     );
 }

@@ -6,27 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTransactionsStore } from "@/store/transactions.store";
-import { usePaymentsStore } from "@/store/payments.store";
-import {
-  computeAccountBalance,
-  computeNextCardObligation,
-  computeUpcomingObligations,
-} from "@/features/transactions/balance";
-import { periodKey } from "@/lib/dates";
+import { computeAccountBalance } from "@/features/transactions/balance";
+import { formatDateTime } from "@/lib/dates";
 import { Account } from "../accounts.types";
 import { AccountDialog, accountTypeLabels } from "./AccountDialog";
-import { AccountPaymentDialog } from "./AccountPaymentDialog";
-
-const periodFormatter = new Intl.DateTimeFormat(undefined, { month: "short" });
-
-function formatPeriod(period: string) {
-  const [year, month] = period.split("-").map(Number);
-  return periodFormatter.format(new Date(year, month - 1, 1));
-}
-
-function formatDueDate(date: Date) {
-  return date.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
-}
+import { TransactionDialog } from "@/features/transactions/components/TransactionDialog";
 
 type Props = {
   account: Account;
@@ -36,23 +20,17 @@ export function AccountCard({ account }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const transactions = useTransactionsStore(state => state.transactions);
-  const payments = usePaymentsStore(state => state.payments);
-  const addPayment = usePaymentsStore(state => state.addPayment);
 
-  const balance = computeAccountBalance(account, transactions, payments);
+  const balance = computeAccountBalance(account, transactions);
   const isDebt = account.type === "credit";
   const isNegative = isDebt ? balance > 0 : balance < 0;
 
-  const nextObligation = isDebt
-    ? computeNextCardObligation(account.id, transactions, payments)
-    : null;
-  const canPay = !!nextObligation?.isDue;
-
-  const upcoming = isDebt && nextObligation
-    ? computeUpcomingObligations(account.id, transactions, payments)
-        .filter(o => o.period > periodKey(nextObligation.dueDate))
-        .slice(0, 3)
-    : [];
+  // The card's own monthly bill — a regular transaction the statements job
+  // generates, so there's nothing to compute here, just find it. A card
+  // only ever has one pending statement at a time.
+  const pendingStatement = isDebt
+    ? transactions.find(t => t.pending && t.statement?.accountId === account.id)
+    : undefined;
 
   return (
     <Card className="py-0">
@@ -82,25 +60,10 @@ export function AccountCard({ account }: Props) {
               Día de pago: {account.paymentDay}
             </span>
           )}
-          {nextObligation && (
-            <div
-              className={cn(
-                "text-xs",
-                nextObligation.isDue
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-muted-foreground"
-              )}
-            >
-              Vence {formatDueDate(nextObligation.dueDate)}: $
-              {nextObligation.amount.toLocaleString()}
-            </div>
-          )}
-          {upcoming.length > 0 && (
-            <div className="text-xs text-muted-foreground">
-              Después:{" "}
-              {upcoming
-                .map(o => `${formatPeriod(o.period)} $${o.amount.toLocaleString()}`)
-                .join(" · ")}
+          {pendingStatement && (
+            <div className="text-xs text-amber-600 dark:text-amber-400">
+              Vence {formatDateTime(pendingStatement.date)}: $
+              {pendingStatement.amount.toLocaleString()}
             </div>
           )}
         </div>
@@ -121,7 +84,7 @@ export function AccountCard({ account }: Props) {
           </span>
         </div>
 
-        {canPay && (
+        {pendingStatement && (
           <Button
             variant="ghost"
             size="icon-sm"
@@ -153,22 +116,12 @@ export function AccountCard({ account }: Props) {
         />
       )}
 
-      {canPay && nextObligation && (
-        <AccountPaymentDialog
-          key={payOpen ? "open" : "closed"}
-          account={account}
-          amountDue={nextObligation.amount}
+      {pendingStatement && (
+        <TransactionDialog
+          mode="edit"
+          transaction={pendingStatement}
           open={payOpen}
           onOpenChange={setPayOpen}
-          onConfirmPayment={(amount, sourceAccountId, date) =>
-            addPayment({
-              id: crypto.randomUUID(),
-              cardAccountId: account.id,
-              amount,
-              date,
-              sourceAccountId,
-            })
-          }
         />
       )}
     </Card>
