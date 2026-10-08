@@ -4,6 +4,68 @@ Newest first. Subscriptions have their own reference in `subscription_handoff.md
 
 ---
 
+# 2026-10-08 — Exact time on transactions: `full_date_utc` (built, **not deployed yet**)
+
+Every transaction now has `full_date_utc`: the exact moment it happened, in UTC. `date` doesn't change. It's still the Chilean calendar date that the key, the `GET` range and card statements work on.
+
+## TL;DR: frontend action items
+
+1. **Send it on create and edit.** The entry dialog's `datetime-local` value is already there; `toWirePayload` just cuts it to `date`. Send both from that same value: `date: value.slice(0, 10)` and `full_date_utc: new Date(value).toISOString()`. Then they always agree.
+2. **Read the time from it.** Show `new Date(t.full_date_utc)` in local time, and prefill the edit dialog from it instead of `toDateTimeLocalValue(transaction.date)`, which always gives 00:00.
+3. **Sort same-day transactions by `full_date_utc`.** `GET /transactions` is still newest `date` first, but within one day the order is arbitrary.
+4. **Keep using `date`** for the `GET` range, the `DELETE` query and grouping by day.
+5. **No-time transactions sit at 00:00 Chilean time:** old ones, subscription bills and card statements. If you'd rather show those as a date only, check whether `full_date_utc` is 00:00 in `America/Santiago`.
+
+## API changes
+
+**Transaction shape:** a new field on every transaction in `GET`, `POST` and `PUT /transactions` responses:
+
+```ts
+type Transaction = {
+  // ...all existing fields
+  full_date_utc: string; // e.g. "2026-10-08T17:30:00Z": always UTC, whole seconds, never null
+};
+```
+
+**Sending it** on `POST` / `PUT /transactions` is optional:
+
+| you send | stored and returned |
+|---|---|
+| `"2026-10-08T17:30:00.123Z"` (what `toISOString()` gives) | `"2026-10-08T17:30:00Z"` (milliseconds dropped) |
+| `"2026-10-08T14:30:00-03:00"` (any offset) | `"2026-10-08T17:30:00Z"` |
+| nothing or `null`, on `POST` | 00:00 Chilean time on `date`: `"2026-10-08T03:00:00Z"` in summer time (UTC-3), `"2026-07-15T04:00:00Z"` in winter time (UTC-4) |
+| nothing or `null`, on `PUT` with the same `date` | the stored value, kept |
+| nothing or `null`, on `PUT` with a new `date` | 00:00 Chilean time on the new date |
+| anything, on a card statement's `PUT` | ignored: the stored value is kept (its `date` can't change either) |
+
+A statement's `lines` don't get the field: each line keeps only the purchase's `date`.
+
+**New `400`s** (`{"message": "Invalid transaction: ..."}`, nothing written):
+
+| when | example |
+|---|---|
+| no UTC offset, or a bare date | `"2026-10-08T14:30:00"`, `"2026-10-08"` |
+| it doesn't fall on `date`: `"full_date_utc must fall on date"` | `date: "2026-10-01"` with `full_date_utc: "2026-10-08T17:30:00Z"` |
+
+The "falls on `date`" check is lenient: any timezone from UTC-12 to UTC+14 counts. So a purchase at 23:30 in Chile (02:30Z the next day) or one entered abroad passes. What it catches is a stale time: changing `date` in an edit but sending the old `full_date_utc`.
+
+## Existing transactions
+
+A one-off migration, `migrations/full_date_utc_2026_10.py`, gives every existing transaction 00:00 Chilean time on its `date`. It runs right after the deploy. Until then, older transactions come back without the field, so fall back to `date` if it's missing.
+
+## Postman
+
+In **Transactions**:
+
+1. **Create Transaction** now sends `full_date_utc` (the current time) and checks it comes back in UTC without milliseconds.
+2. **Create Transfer** sends none and checks the 00:00 Chilean time fallback.
+3. **Create Transaction (time not on date, rejected)** (new): sends a time 3 days after `date` and expects the `400`.
+4. **Pay Card Statement** sends the current time and checks it's ignored: the statement keeps 00:00 Chilean time on its due date.
+5. **List Transactions** checks every transaction has one.
+6. **Update Transaction** omits it and checks the stored time is kept.
+
+---
+
 # 2026-10-08 — Preferred account (built, **not deployed yet**)
 
 Users can pick which account is **preselected when creating a transaction**. This is separate from the built-in "General" account, which doesn't change.

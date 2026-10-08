@@ -35,6 +35,15 @@ console.log(
   }`
 );
 
+function isIdTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    return typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
+}
+
 export const {
   handlers: { GET, POST },
   auth,
@@ -62,8 +71,15 @@ export const {
     signIn: "/login",
   },
   callbacks: {
+    // The session cookie outlives the Cognito ID token it carries (Auth.js
+    // default ~30 days vs. the token's ~1h). Treating "has a cookie" as
+    // authenticated let an expired-token session through the proxy, where the
+    // client would detect the dead token, bounce through Cognito's logout, and
+    // land back on a page the proxy still considered signed in — an endless
+    // "Tu sesión expiró" loop. Checking expiry here sends such requests to
+    // /login for a fresh token instead.
     authorized({ auth }) {
-      return !!auth;
+      return !!auth?.idToken && !isIdTokenExpired(auth.idToken);
     },
     // `account` is only populated on the initial sign-in (not on later
     // token refreshes), so this block runs exactly once per login. It both

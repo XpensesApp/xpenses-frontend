@@ -101,6 +101,10 @@ Each account also carries a server-maintained `balance` (plus the `openingBalanc
 
 **`isDefault` vs `isPreferred` — don't conflate these.** `isDefault` is always General (`accountId: "default"`) — the backend's own fallback when a transaction omits `accountId`, never user-settable. `isPreferred` is the user's own choice of which account `TransactionDialog` preselects for a *new* transaction (`accounts.find(a => a.isPreferred)`, set via `AccountCard`'s pin action → `useAccountsStore`'s `setPreferredAccount` → `PUT /accounts/preferred`) — it can be any account, including a credit card, and exactly one account always has it (General until the user picks another). Omitting `accountId` when creating a transaction still lands on General regardless of what's preferred — the frontend always sends the preselected `accountId` explicitly rather than relying on the backend's fallback. Deleting the preferred account is refused (409) the same way deleting the default one is — `AccountDialog` hides delete for it too, rather than offering a "make another one preferred and delete" flow.
 
+### Transaction date vs. time
+
+`Transaction.date` is the calendar day ("YYYY-MM-DD") the backend keys, ranges (`GET`/`DELETE`) and bills by; `Transaction.fullDateUtc` (wire: `full_date_utc`) is the exact UTC moment. They're separate on purpose — don't derive one from the other when reading. In the entry dialog, `date` temporarily holds the local datetime-local value, and `toWirePayload` derives both wire fields from it (they must agree or the backend returns `400`). Display/prefill/sorting go through `lib/dates.ts`'s `transactionMoment`/`transactionDateTimeLocalValue`/`compareTransactionsByMoment`; entries at exactly 00:00 Chilean time (old rows, subscription bills, card statements — the backend's "no time" default) are shown as a plain date.
+
 ### Future backend
 
 The application is expected to eventually communicate with a backend API.

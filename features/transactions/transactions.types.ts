@@ -6,7 +6,10 @@ export type Transaction = {
   amount: number;
   /** Categories/tags this entry belongs to. An empty array means uncategorized. */
   categories: string[];
+  /** The calendar day ("YYYY-MM-DD", Chilean date) the backend keys, ranges and bills this entry by. In the entry dialog it temporarily holds the datetime-local value ("YYYY-MM-DDTHH:mm"); the exact moment is `fullDateUtc`. */
   date: string;
+  /** The exact moment this happened, as UTC ("YYYY-MM-DDTHH:mm:ssZ"). Absent only on older rows until the backend migration runs. Entries with no real time (old ones, subscription bills, card statements) sit at 00:00 Chilean time. */
+  fullDateUtc?: string;
   type: TransactionType;
   /** Whether this entry affects the balance total, or is only referencial. Defaults to true. */
   affectsBalance: boolean;

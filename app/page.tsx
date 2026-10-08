@@ -8,6 +8,7 @@ import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { normalizeForSearch } from "@/lib/utils";
+import { compareTransactionsByMoment } from "@/lib/dates";
 import { TransactionCard } from "@/features/transactions/components/TransactionCard";
 import { CreateTransactionDialog } from "@/features/transactions/components/CreateTransactionDialog";
 import { UpcomingCardPayments } from "@/features/accounts/components/UpcomingCardPayments";
@@ -64,9 +65,9 @@ export default function MovementsPage() {
 
         switch (filters.sort) {
             case "date-asc":
-                return list.sort((a, b) => a.date.localeCompare(b.date));
+                return list.sort(compareTransactionsByMoment);
             case "date-desc":
-                return list.sort((a, b) => b.date.localeCompare(a.date));
+                return list.sort((a, b) => compareTransactionsByMoment(b, a));
             case "price-asc":
                 return list.sort((a, b) => Math.abs(a.amount) - Math.abs(b.amount));
             case "price-desc":

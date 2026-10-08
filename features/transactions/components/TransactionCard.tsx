@@ -8,7 +8,7 @@ import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { countPaidInstallments } from "@/features/transactions/balance";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, transactionMoment } from "@/lib/dates";
 import { Transaction } from "../transactions.types";
 import { TransactionDialog } from "./TransactionDialog";
 
@@ -103,7 +103,7 @@ export function TransactionCard({ transaction }: Props) {
             )}
           </div>
           <span className="text-xs text-muted-foreground">
-            {formatDateTime(transaction.date)}
+            {formatDateTime(transactionMoment(transaction))}
           </span>
         </div>
 

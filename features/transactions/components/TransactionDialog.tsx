@@ -22,7 +22,7 @@ import {
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { Transaction, TransactionType } from "@/features/transactions/transactions.types";
-import { nowLocalDateTime, toDateTimeLocalValue } from "@/lib/dates";
+import { nowLocalDateTime, transactionDateTimeLocalValue } from "@/lib/dates";
 import { errorMessage, errorStatus } from "@/lib/utils";
 
 const NO_ACCOUNT = "none";
@@ -114,7 +114,7 @@ export function TransactionDialog(props: Props) {
       // the backend rejects changing it, unlike a subscription's pending
       // entry, where resetting to "now" records the real payment moment.
       setDate(
-        isPaying && !isStatement ? nowLocalDateTime() : toDateTimeLocalValue(transaction.date)
+        isPaying && !isStatement ? nowLocalDateTime() : transactionDateTimeLocalValue(transaction)
       );
       setAffectsBalance(transaction.affectsBalance);
       setAccountId(

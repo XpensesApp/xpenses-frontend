@@ -37,6 +37,47 @@ export function toDateTimeLocalValue(date: string): string {
   return date.length === 10 ? `${date}T00:00` : date.slice(0, 16);
 }
 
+const santiagoClock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "America/Santiago",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+type Dated = { date: string; fullDateUtc?: string };
+
+/**
+ * Whether a transaction's `fullDateUtc` carries a real time. The backend puts
+ * entries without one (old rows, subscription bills, card statements) at
+ * 00:00 Chilean time on their date, so those — and rows from before the
+ * backend migration, which have no `fullDateUtc` at all — are shown as a plain date.
+ */
+function hasRealTime(fullDateUtc?: string): fullDateUtc is string {
+  if (!fullDateUtc) return false;
+  const parsed = new Date(fullDateUtc);
+  return !Number.isNaN(parsed.getTime()) && santiagoClock.format(parsed) !== "00:00:00";
+}
+
+/** A transaction's value for `formatDateTime`: its exact moment when it has a real time, otherwise just its date. */
+export function transactionMoment(transaction: Dated): string {
+  return hasRealTime(transaction.fullDateUtc) ? transaction.fullDateUtc : transaction.date;
+}
+
+/** A transaction's value for a datetime-local input, in the viewer's local time. */
+export function transactionDateTimeLocalValue(transaction: Dated): string {
+  if (!hasRealTime(transaction.fullDateUtc)) return toDateTimeLocalValue(transaction.date);
+  const moment = new Date(transaction.fullDateUtc);
+  return new Date(moment.getTime() - moment.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+/** Orders by calendar day, then by exact moment within the same day. */
+export function compareTransactionsByMoment(a: Dated, b: Dated): number {
+  return (
+    a.date.localeCompare(b.date) || (a.fullDateUtc ?? "").localeCompare(b.fullDateUtc ?? "")
+  );
+}
+
 /** Formats a stored date (bare "YYYY-MM-DD" or full datetime) for display. */
 export function formatDateTime(date: string): string {
   if (date.length > 10) {

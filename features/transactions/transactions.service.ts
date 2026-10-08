@@ -27,6 +27,7 @@ type WireTransaction = {
   amount: string;
   categories: string[];
   date: string;
+  full_date_utc?: string;
   type: TransactionType;
   affectsBalance: boolean;
   pending: boolean;
@@ -60,6 +61,7 @@ function fromWire(wire: WireTransaction): Transaction {
     amount: Number(wire.amount),
     categories: wire.categories,
     date: wire.date,
+    fullDateUtc: wire.full_date_utc,
     type: wire.type,
     affectsBalance: wire.affectsBalance,
     pending: wire.pending,
@@ -89,18 +91,24 @@ function fromWire(wire: WireTransaction): Transaction {
   };
 }
 
-// The backend only stores a bare "YYYY-MM-DD" — the frontend's `date` can
-// carry a "YYYY-MM-DDTHH:mm" from the entry dialog's datetime-local input,
-// so the time portion is dropped here rather than sent and silently ignored.
+// The frontend's `date` can carry a "YYYY-MM-DDTHH:mm" (local time) from the
+// entry dialog's datetime-local input. The backend wants the calendar day as
+// `date` and the exact moment as `full_date_utc`, and rejects them if they
+// disagree — so both are derived here from that one value. A bare "YYYY-MM-DD"
+// sends no `full_date_utc`: the backend keeps the stored time on an edit with
+// the same date, or uses 00:00 Chilean time otherwise.
 // `statement` is never sent: it's server-managed — ignored on create, and on
 // update the backend keeps it (along with `type`/`targetAccountId`) from the
 // stored item regardless of what's in this payload.
 function toWirePayload(transaction: Omit<Transaction, "id">) {
+  const moment = transaction.date.length > 10 ? new Date(transaction.date) : null;
+
   return {
     title: transaction.title,
     amount: transaction.amount.toFixed(2),
     categories: transaction.categories,
     date: transaction.date.slice(0, 10),
+    full_date_utc: moment && !Number.isNaN(moment.getTime()) ? moment.toISOString() : null,
     type: transaction.type,
     affectsBalance: transaction.affectsBalance,
     pending: transaction.pending,
