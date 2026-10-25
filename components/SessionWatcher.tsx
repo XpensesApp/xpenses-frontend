@@ -1,21 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
+import { isPublicPath } from "@/lib/public-routes";
 import {
   getCurrentAuthToken,
   isReauthenticating,
   onReauthTriggered,
 } from "@/lib/current-auth-token";
 
-// Expiry is otherwise only caught reactively, the next time some page
-// happens to call a transactions/subscriptions service (on mount, or a
-// save). That leaves a gap: an idle tab past the token's ~1h lifetime keeps
-// showing stale data instead of signing out. This polls in the background so
-// that gap doesn't depend on the user doing anything — getCurrentAuthToken()
-// already forces a full reauth redirect the moment it finds the token
-// missing or expired, this just calls it on a timer instead of only when a
-// request needs it.
+// A dead session (refresh token expired or revoked) is otherwise only caught
+// reactively, the next time some page happens to call a backend service (on
+// mount, or a save). That leaves a gap: an idle tab keeps showing stale data
+// instead of signing out. This polls in the background so that gap doesn't
+// depend on the user doing anything — getCurrentAuthToken() already forces a
+// full reauth the moment it finds no usable session (and renews the ID token
+// on the way when it merely expired), this just calls it on a timer instead
+// of only when a request needs it.
 const CHECK_INTERVAL_MS = 60_000;
 
 export function SessionWatcher() {
@@ -25,8 +27,11 @@ export function SessionWatcher() {
   // it lands, this overlay covers the page instead of leaving whatever was
   // already rendered showing broken-looking zeroed/empty state underneath.
   const [reauthing, setReauthing] = useState(isReauthenticating);
+  const isPublicPage = isPublicPath(usePathname());
 
   useEffect(() => {
+    if (isPublicPage) return;
+
     const unsubscribe = onReauthTriggered(() => setReauthing(true));
 
     const interval = setInterval(() => {
@@ -37,15 +42,15 @@ export function SessionWatcher() {
       unsubscribe();
       clearInterval(interval);
     };
-  }, []);
+  }, [isPublicPage]);
 
-  if (!reauthing) return null;
+  if (!reauthing || isPublicPage) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        Tu sesión expiró. Cerrando sesión...
+        Tu sesión expiró, inicia sesión nuevamente
       </div>
     </div>
   );

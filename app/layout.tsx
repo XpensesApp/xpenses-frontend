@@ -1,6 +1,5 @@
 import "./globals.css";
-import { SessionProvider } from "next-auth/react";
-import { auth } from "@/auth";
+import { ConfigureAmplify } from "@/components/ConfigureAmplify";
 import { Navbar } from "@/components/Navbar";
 import { SessionWatcher } from "@/components/SessionWatcher";
 
@@ -9,13 +8,11 @@ export const metadata = {
   description: "Gestión de gastos personales",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
@@ -26,11 +23,10 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        <SessionProvider session={session}>
-          <SessionWatcher />
-          <Navbar />
-          {children}
-        </SessionProvider>
+        <ConfigureAmplify />
+        <SessionWatcher />
+        <Navbar />
+        {children}
       </body>
     </html>
   );

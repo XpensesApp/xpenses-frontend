@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { fetchAuthSession, signOut } from "aws-amplify/auth";
 import { CircleUserIcon, LogOutIcon, MenuIcon, SettingsIcon, UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isPublicPath } from "@/lib/public-routes";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
@@ -62,8 +64,27 @@ const navItems = [
 
 export function Navbar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const userName = session?.user?.name ?? session?.user?.email ?? null;
+  const isPublicPage = isPublicPath(pathname);
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isPublicPage) return;
+
+    let cancelled = false;
+    fetchAuthSession()
+      .then(({ tokens }) => {
+        const claims = tokens?.idToken?.payload;
+        const name = (claims?.name ?? claims?.email) as string | undefined;
+        if (!cancelled) setUserName(name ?? null);
+      })
+      .catch(error => console.error("[auth] Could not read the session for the Navbar:", error));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicPage]);
+
+  if (isPublicPage) return null;
 
   return (
     <nav className="flex h-20 items-center gap-8 border-b bg-card px-4 shadow-sm sm:px-8">
@@ -111,12 +132,9 @@ export function Navbar() {
               Configuración
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- redirect-only route handler, not a page; next/link's soft-navigation attempt fails on it and falls back to a reload anyway */}
-              <a href="/api/auth/cognito-logout">
-                <LogOutIcon />
-                Cerrar sesión
-              </a>
+            <DropdownMenuItem onSelect={() => void signOut()}>
+              <LogOutIcon />
+              Cerrar sesión
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
