@@ -21,17 +21,22 @@ import {
 } from "@/components/ui/select";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
+import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { Transaction, TransactionType } from "@/features/transactions/transactions.types";
+import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { nowLocalDateTime, transactionDateTimeLocalValue } from "@/lib/dates";
 import { errorMessage, errorStatus } from "@/lib/utils";
 
 const NO_ACCOUNT = "none";
+const NO_SUBSCRIPTION = "none";
 
 type CreateProps = {
   mode: "create";
   initialTitle?: string;
   /** Pre-selects the type when the dialog opens — e.g. the Accounts page's "Transferir" button opens straight into transfer mode instead of making the user switch to it. Defaults to "expense". */
   initialType?: TransactionType;
+  /** Opens the dialog as a manual payment of this subscription: prefilled from it, linked to it, and starting as pending ("Por pagar") like the entries the daily job generates. */
+  subscription?: Subscription;
 };
 
 type EditProps = {
@@ -53,6 +58,8 @@ export function TransactionDialog(props: Props) {
   const deleteTransaction = useTransactionsStore(state => state.deleteTransaction);
   const loadTransactions = useTransactionsStore(state => state.loadTransactions);
   const accounts = useAccountsStore(state => state.accounts);
+  const subscriptions = useSubscriptionsStore(state => state.subscriptions);
+  const loadSubscriptions = useSubscriptionsStore(state => state.loadSubscriptions);
 
   const [type, setType] = useState<TransactionType>("expense");
   const [title, setTitle] = useState("");
@@ -65,6 +72,13 @@ export function TransactionDialog(props: Props) {
   const [targetAccountId, setTargetAccountId] = useState(NO_ACCOUNT);
   const [useInstallments, setUseInstallments] = useState(false);
   const [installments, setInstallments] = useState("");
+  const [subscriptionId, setSubscriptionId] = useState(NO_SUBSCRIPTION);
+  // Only a manual subscription payment starts (and can stay) pending; every
+  // other entry made here is saved as paid, as before.
+  const [pending, setPending] = useState(false);
+  // True once a subscriptions load triggered from here succeeded — tells "not
+  // loaded yet" apart from "that subscription is really gone" for the picker.
+  const [subscriptionsLoaded, setSubscriptionsLoaded] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,8 +94,17 @@ export function TransactionDialog(props: Props) {
   const statement = props.mode === "edit" ? props.transaction.statement : undefined;
   const isStatement = !!statement;
   const statementAccount = statement ? accounts.find(a => a.id === statement.accountId) : undefined;
-  const installmentsApply = isCreditSelected && type === "expense";
+  // A pending payment hasn't been confirmed yet, so there's no purchase to
+  // split into cuotas until it's paid.
+  const installmentsApply = isCreditSelected && type === "expense" && !pending;
   const isTransfer = type === "transfer";
+  const isSubscriptionPayment = props.mode === "create" && !!props.subscription;
+  const subscriptionsKnown = subscriptions.length > 0 || subscriptionsLoaded;
+  // The entry points at a subscription that's no longer in the list (deleted).
+  // Its id is still kept and resent unless the user picks something else —
+  // the backend accepts an unchanged link even to a deleted subscription.
+  const linkedSubscriptionMissing =
+    subscriptionId !== NO_SUBSCRIPTION && !subscriptions.some(s => s.id === subscriptionId);
   // A credit card can't be a transfer's source — it tracks debt, not
   // spendable money, so there's nothing to move "from" it. It CAN be a
   // destination (paying a card down), including the card's own
@@ -125,18 +148,33 @@ export function TransactionDialog(props: Props) {
       setTargetAccountId(transaction.targetAccountId ?? NO_ACCOUNT);
       setUseInstallments(!!transaction.installments);
       setInstallments(transaction.installments ? String(transaction.installments) : "");
+      setSubscriptionId(transaction.subscriptionId ?? NO_SUBSCRIPTION);
+      setPending(false);
     } else {
-      setType(props.initialType ?? "expense");
-      setTitle(props.initialTitle?.trim() ?? "");
-      setAmount("");
-      setCategories([]);
+      // A subscription payment starts from the subscription's own data; the
+      // account is the user's preferred one because subscriptions have none.
+      const subscription = props.subscription;
+      setType(subscription?.type ?? props.initialType ?? "expense");
+      setTitle(subscription?.title ?? props.initialTitle?.trim() ?? "");
+      setAmount(subscription?.amount != null ? String(subscription.amount) : "");
+      setCategories(subscription?.category ? [subscription.category] : []);
       setCategoryInput("");
       setDate(nowLocalDateTime());
-      setAffectsBalance(true);
+      setAffectsBalance(subscription?.affectsBalance ?? true);
       setAccountId(preferredAccountId ?? accounts.find(a => a.isDefault)?.id ?? NO_ACCOUNT);
       setTargetAccountId(NO_ACCOUNT);
       setUseInstallments(false);
       setInstallments("");
+      setSubscriptionId(subscription?.id ?? NO_SUBSCRIPTION);
+      setPending(!!subscription);
+    }
+
+    // The picker needs the user's subscriptions, and not every page that
+    // opens this dialog loads them (e.g. Accounts).
+    if (useSubscriptionsStore.getState().subscriptions.length === 0) {
+      loadSubscriptions()
+        .then(() => setSubscriptionsLoaded(true))
+        .catch(() => {});
     }
 
     setError(null);
@@ -153,7 +191,11 @@ export function TransactionDialog(props: Props) {
       return;
     }
 
-    if (!amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    // A pending payment may keep no amount yet (a variable subscription's
+    // amount is only known when it's paid) — it's saved as 0, shown as "Por definir".
+    const amountStillOpen = pending && (!amount || parsedAmount === 0);
+
+    if (!amountStillOpen && (!amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0)) {
       setError("Ingresa un precio válido.");
       return;
     }
@@ -189,6 +231,10 @@ export function TransactionDialog(props: Props) {
       isTransfer && targetAccountId !== NO_ACCOUNT ? targetAccountId : undefined;
     const resolvedInstallments =
       installmentsApply && useInstallments ? parsedInstallments : undefined;
+    // undefined clears the link (the service sends null), so a transfer or a
+    // "Sin suscripción" choice both unlink.
+    const resolvedSubscriptionId =
+      isTransfer || subscriptionId === NO_SUBSCRIPTION ? undefined : subscriptionId;
     const pendingCategory = categoryInput.trim();
     const resolvedCategories = isTransfer
       ? []
@@ -212,6 +258,7 @@ export function TransactionDialog(props: Props) {
           accountId: resolvedAccountId,
           targetAccountId: resolvedTargetAccountId,
           installments: resolvedInstallments,
+          subscriptionId: resolvedSubscriptionId,
           pending: false,
         });
       } else {
@@ -225,7 +272,8 @@ export function TransactionDialog(props: Props) {
           accountId: resolvedAccountId,
           targetAccountId: resolvedTargetAccountId,
           installments: resolvedInstallments,
-          pending: false,
+          subscriptionId: resolvedSubscriptionId,
+          pending,
         });
       }
 
@@ -273,7 +321,9 @@ export function TransactionDialog(props: Props) {
                     : "Editar movimiento"
               : isTransfer
                 ? "Nueva transferencia"
-                : "Nuevo movimiento"}
+                : isSubscriptionPayment
+                  ? "Registrar pago de suscripción"
+                  : "Nuevo movimiento"}
           </DialogTitle>
         </DialogHeader>
 
@@ -530,6 +580,61 @@ export function TransactionDialog(props: Props) {
                   />
                 )}
               </div>
+            </div>
+          )}
+
+          {/* A transfer or a card statement is never tied to a subscription. */}
+          {!isTransfer && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Suscripción (opcional)</label>
+              <Select value={subscriptionId} onValueChange={setSubscriptionId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SUBSCRIPTION}>Sin suscripción</SelectItem>
+                  {linkedSubscriptionMissing && (
+                    <SelectItem value={subscriptionId}>
+                      {subscriptionsKnown ? "Suscripción eliminada" : "Suscripción vinculada"}
+                    </SelectItem>
+                  )}
+                  {subscriptions.map(subscription => (
+                    <SelectItem key={subscription.id} value={subscription.id}>
+                      {subscription.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {isSubscriptionPayment && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Estado</label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={pending ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPending(true)}
+                >
+                  Por pagar
+                </Button>
+                <Button
+                  type="button"
+                  variant={!pending ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPending(false)}
+                >
+                  Pagado
+                </Button>
+              </div>
+              {pending && (
+                <p className="text-xs text-muted-foreground">
+                  Queda como pendiente, igual que los cobros automáticos. El precio puede quedar
+                  en blanco hasta que lo pagues.
+                </p>
+              )}
             </div>
           )}
 

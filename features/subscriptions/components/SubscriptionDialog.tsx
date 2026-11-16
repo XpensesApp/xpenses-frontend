@@ -50,6 +50,7 @@ export function SubscriptionDialog(props: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingCategory, setConfirmingCategory] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
@@ -84,6 +85,7 @@ export function SubscriptionDialog(props: Props) {
 
     setError(null);
     setConfirmingDelete(false);
+    setConfirmingCategory(false);
     titleRef.current?.focus();
   }
 
@@ -112,6 +114,15 @@ export function SubscriptionDialog(props: Props) {
 
     if (hasEndDate && !endDate) {
       setError("Selecciona una fecha de término.");
+      return;
+    }
+
+    // The backend rewrites the category of every movement linked to this
+    // subscription — paid ones and hand-edited ones included — so a change
+    // needs an explicit confirmation before anything is saved.
+    if (props.mode === "edit" && category.trim() !== props.subscription.category && !confirmingCategory) {
+      setConfirmingDelete(false);
+      setConfirmingCategory(true);
       return;
     }
 
@@ -241,7 +252,14 @@ export function SubscriptionDialog(props: Props) {
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Categoría (opcional)</label>
-            <Input value={category} onChange={e => setCategory(e.target.value)} />
+            <Input
+              value={category}
+              onChange={e => {
+                setCategory(e.target.value);
+                // A confirmation only covers the category it was shown for.
+                setConfirmingCategory(false);
+              }}
+            />
           </div>
 
           <div className="space-y-1">
@@ -310,6 +328,13 @@ export function SubscriptionDialog(props: Props) {
             </div>
           </div>
 
+          {confirmingCategory && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              Al guardar, la categoría de todos los movimientos vinculados a esta suscripción
+              cambiará a la nueva, incluidos los ya pagados y los que editaste a mano.
+            </p>
+          )}
+
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
@@ -355,9 +380,21 @@ export function SubscriptionDialog(props: Props) {
             )
           )}
 
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Guardando..." : "Guardar"}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            {confirmingCategory && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmingCategory(false)}
+                disabled={saving}
+              >
+                Cancelar
+              </Button>
+            )}
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "Guardando..." : confirmingCategory ? "Confirmar y guardar" : "Guardar"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -5,17 +5,23 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/Spinner";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
+import { useAccountsStore } from "@/store/accounts.store";
 import { SubscriptionCard } from "@/features/subscriptions/components/SubscriptionCard";
 import { SubscriptionDialog } from "@/features/subscriptions/components/SubscriptionDialog";
 
 export default function SubscriptionsPage() {
     const { subscriptions, loadSubscriptions } = useSubscriptionsStore();
+    const loadAccounts = useAccountsStore(state => state.loadAccounts);
     const [createOpen, setCreateOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         loadSubscriptions().finally(() => setIsLoading(false));
-    }, [loadSubscriptions]);
+        // "Registrar pago" opens the movement form, which preselects the
+        // user's preferred account — it needs the accounts loaded. Best-effort:
+        // the page itself doesn't depend on them.
+        loadAccounts().catch(() => {});
+    }, [loadSubscriptions, loadAccounts]);
 
     return (
         <section className="p-6 space-y-4">

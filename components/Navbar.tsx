@@ -58,6 +58,7 @@ const navItems = [
     href: "/subscriptions",
     prefetchData: () => {
       useSubscriptionsStore.getState().loadSubscriptions();
+      useAccountsStore.getState().loadAccounts();
     },
   },
 ];

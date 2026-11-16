@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { PauseIcon, PencilIcon, PlayIcon } from "lucide-react";
+import { PauseIcon, PencilIcon, PlayIcon, WalletIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
+import { TransactionDialog } from "@/features/transactions/components/TransactionDialog";
 import { Subscription } from "../subscriptions.types";
 import { SubscriptionDialog } from "./SubscriptionDialog";
 
@@ -15,6 +16,7 @@ type Props = {
 
 export function SubscriptionCard({ subscription }: Props) {
   const [editOpen, setEditOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
   const toggleSubscriptionStatus = useSubscriptionsStore(state => state.toggleSubscriptionStatus);
 
   const isPaused = subscription.status === "paused";
@@ -56,6 +58,16 @@ export function SubscriptionCard({ subscription }: Props) {
         <Button
           variant="ghost"
           size="icon-sm"
+          aria-label="Registrar pago"
+          title="Registrar pago"
+          onClick={() => setPaymentOpen(true)}
+        >
+          <WalletIcon />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
           onClick={() => toggleSubscriptionStatus(subscription.id)}
         >
@@ -77,6 +89,13 @@ export function SubscriptionCard({ subscription }: Props) {
         subscription={subscription}
         open={editOpen}
         onOpenChange={setEditOpen}
+      />
+
+      <TransactionDialog
+        mode="create"
+        subscription={subscription}
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
       />
     </Card>
   );
