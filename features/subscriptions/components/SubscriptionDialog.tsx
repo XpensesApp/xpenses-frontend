@@ -55,8 +55,6 @@ export function SubscriptionDialog(props: Props) {
 
   const titleRef = useRef<HTMLInputElement>(null);
 
-  const canDelete = props.mode === "edit" && props.subscription.status === "paused";
-
   function handleOpenAutoFocus(e: Event) {
     e.preventDefault();
 
@@ -335,6 +333,12 @@ export function SubscriptionDialog(props: Props) {
             </p>
           )}
 
+          {confirmingDelete && (
+            <p className="text-sm text-muted-foreground">
+              Dejará de generar cobros. Los movimientos que ya generó se conservan.
+            </p>
+          )}
+
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
@@ -364,7 +368,7 @@ export function SubscriptionDialog(props: Props) {
                   Cancelar
                 </Button>
               </div>
-            ) : canDelete ? (
+            ) : (
               <Button
                 type="button"
                 variant="destructive"
@@ -373,10 +377,6 @@ export function SubscriptionDialog(props: Props) {
               >
                 Eliminar
               </Button>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                Pausa la suscripción para poder eliminarla.
-              </span>
             )
           )}
 

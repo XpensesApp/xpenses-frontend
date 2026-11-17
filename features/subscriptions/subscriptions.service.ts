@@ -52,8 +52,8 @@ function fromWire(wire: WireSubscription): Subscription {
   };
 }
 
-// subscriptionId/createdAt are server-generated on create and aren't part of
-// the PUT body either, so this payload shape covers both create and update.
+// subscriptionId/createdAt are server-generated on create, so this payload
+// shape covers both create and update — update adds the two on top of it.
 function toWirePayload(subscription: Omit<Subscription, "id" | "createdAt">) {
   return {
     title: subscription.title,
@@ -105,6 +105,11 @@ export const subscriptionsService = {
       body: JSON.stringify({
         ...toWirePayload(subscription),
         subscriptionId: subscription.id,
+        // The PUT replaces the whole item and the backend fills in "now" for a
+        // missing createdAt — so without sending it back, every edit or pause
+        // would reset it (and, after a reload, push the subscription to the
+        // top of the newest-first list).
+        createdAt: subscription.createdAt,
       }),
     });
     if (!res.ok) return parseError(res, "Failed to update subscription");

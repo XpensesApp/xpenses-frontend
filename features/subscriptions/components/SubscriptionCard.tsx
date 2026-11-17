@@ -17,11 +17,28 @@ type Props = {
 export function SubscriptionCard({ subscription }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const toggleSubscriptionStatus = useSubscriptionsStore(state => state.toggleSubscriptionStatus);
 
   const isPaused = subscription.status === "paused";
   const hasEnded = !!subscription.endDate && subscription.endDate < todayISODate();
   const statusLabel = isPaused ? "Pausada" : hasEnded ? "Finalizada" : "Activa";
+
+  // Awaited (and guarded against a second click while in flight) so a failed
+  // pause/resume shows up instead of silently leaving the card as it was.
+  async function handleToggleStatus() {
+    setToggling(true);
+    setToggleError(null);
+    try {
+      await toggleSubscriptionStatus(subscription.id);
+    } catch (error) {
+      console.error("Could not change the subscription's status:", error);
+      setToggleError(`No se pudo ${isPaused ? "reanudar" : "pausar"} la suscripción. Intenta de nuevo.`);
+    } finally {
+      setToggling(false);
+    }
+  }
 
   return (
     <Card className="py-0">
@@ -37,7 +54,11 @@ export function SubscriptionCard({ subscription }: Props) {
             <span
               className={cn(
                 "shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none",
-                isPaused || hasEnded ? "text-muted-foreground" : "text-income"
+                isPaused
+                  ? "text-amber-600 dark:text-amber-400"
+                  : hasEnded
+                    ? "text-muted-foreground"
+                    : "text-income"
               )}
             >
               {statusLabel}
@@ -46,7 +67,9 @@ export function SubscriptionCard({ subscription }: Props) {
           <span className="text-xs text-muted-foreground">
             Se factura el día {subscription.billingDay} de cada mes
             {subscription.endDate ? ` · hasta ${subscription.endDate}` : ""}
+            {isPaused ? " · no genera cobros mientras esté pausada" : ""}
           </span>
+          {toggleError && <p className="text-xs text-destructive">{toggleError}</p>}
         </div>
 
         <span className="shrink-0 font-medium tabular-nums">
@@ -69,7 +92,9 @@ export function SubscriptionCard({ subscription }: Props) {
           variant="ghost"
           size="icon-sm"
           aria-label={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
-          onClick={() => toggleSubscriptionStatus(subscription.id)}
+          title={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
+          disabled={toggling}
+          onClick={handleToggleStatus}
         >
           {isPaused ? <PlayIcon /> : <PauseIcon />}
         </Button>

@@ -123,6 +123,29 @@ export function TransactionDialog(props: Props) {
     setCategories(prev => prev.filter(c => c !== value));
   }
 
+  // Picking a subscription for a NEW entry starts it from that subscription's
+  // own data (still editable afterwards), so recording its payment doesn't mean
+  // retyping everything. What the subscription doesn't define is left as the
+  // user had it: a variable amount, no category. Editing an existing entry only
+  // changes the link — its own data isn't overwritten. Subscriptions have no
+  // account or date, so those stay as they are too.
+  function handleSubscriptionChange(value: string) {
+    setSubscriptionId(value);
+
+    if (props.mode !== "create") return;
+    const subscription = subscriptions.find(s => s.id === value);
+    if (!subscription) return;
+
+    setType(subscription.type);
+    setTitle(subscription.title);
+    setAffectsBalance(subscription.affectsBalance);
+    if (subscription.amount != null) setAmount(String(subscription.amount));
+    if (subscription.category) {
+      setCategories([subscription.category]);
+      setCategoryInput("");
+    }
+  }
+
   function handleOpenAutoFocus(e: Event) {
     e.preventDefault();
 
@@ -587,7 +610,7 @@ export function TransactionDialog(props: Props) {
           {!isTransfer && (
             <div className="space-y-1">
               <label className="text-sm font-medium">Suscripción (opcional)</label>
-              <Select value={subscriptionId} onValueChange={setSubscriptionId}>
+              <Select value={subscriptionId} onValueChange={handleSubscriptionChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -605,6 +628,11 @@ export function TransactionDialog(props: Props) {
                   ))}
                 </SelectContent>
               </Select>
+              {props.mode === "create" && subscriptionId !== NO_SUBSCRIPTION && !linkedSubscriptionMissing && (
+                <p className="text-xs text-muted-foreground">
+                  Se cargaron los datos de la suscripción; puedes editarlos.
+                </p>
+              )}
             </div>
           )}
 
