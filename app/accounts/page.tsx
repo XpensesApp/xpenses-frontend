@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRightIcon, PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/Spinner";
+import { CardListSkeleton } from "@/components/CardListSkeleton";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { untrackedAccount } from "@/features/accounts/accounts.types";
@@ -51,7 +51,7 @@ export default function AccountsPage() {
             </div>
 
             {isLoading ? (
-                <Spinner />
+                <CardListSkeleton count={3} />
             ) : (
                 <>
                     <ul className="space-y-2">

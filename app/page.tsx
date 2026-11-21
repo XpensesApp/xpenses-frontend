@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2Icon, SlidersHorizontalIcon } from "lucide-react";
+import { SlidersHorizontalIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/Spinner";
+import { CardListSkeleton } from "@/components/CardListSkeleton";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
@@ -115,7 +115,7 @@ export default function MovementsPage() {
                 )}
 
                 {isLoading ? (
-                    <Spinner />
+                    <CardListSkeleton />
                 ) : (
                     <>
                         <ul className="space-y-2">
@@ -130,18 +130,20 @@ export default function MovementsPage() {
                             </p>
                         )}
 
-                        {hasMore && (
-                            <div className="flex justify-center pt-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={isLoadingMore}
-                                    onClick={() => loadMoreTransactions()}
-                                >
-                                    {isLoadingMore && <Loader2Icon className="animate-spin" />}
-                                    Cargar más movimientos
-                                </Button>
-                            </div>
+                        {isLoadingMore ? (
+                            <CardListSkeleton count={3} />
+                        ) : (
+                            hasMore && (
+                                <div className="flex justify-center pt-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => loadMoreTransactions()}
+                                    >
+                                        Cargar más movimientos
+                                    </Button>
+                                </div>
+                            )
                         )}
                     </>
                 )}

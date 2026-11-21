@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2Icon } from "lucide-react";
-import { Spinner } from "@/components/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useTransactionsStore } from "@/store/transactions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { cn } from "@/lib/utils";
@@ -77,10 +76,28 @@ export default function DashboardPage() {
                     <CardTitle>Gastos por categoría</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {isLoading ? <Spinner /> : <ExpensesByCategoryChart transactions={transactions} />}
+                    {isLoading ? <ChartSkeleton /> : <ExpensesByCategoryChart transactions={transactions} />}
                 </CardContent>
             </Card>
         </section>
+    );
+}
+
+// Horizontal bars of decreasing length, like ExpensesByCategoryChart's
+// (category label on the left, bar to the right), at about its minimum height.
+function ChartSkeleton() {
+    const barWidths = ["w-4/5", "w-3/5", "w-2/5", "w-1/4"];
+
+    return (
+        <div role="status" aria-busy="true" className="space-y-4 py-2">
+            <span className="sr-only">Cargando...</span>
+            {barWidths.map(width => (
+                <div key={width} aria-hidden className="flex items-center gap-3">
+                    <Skeleton className="h-4 w-24 shrink-0" />
+                    <Skeleton className={`h-6 ${width}`} />
+                </div>
+            ))}
+        </div>
     );
 }
 
@@ -101,7 +118,8 @@ function BalanceTile({
         <div className="space-y-1 rounded-lg border p-4">
             <span className="text-sm font-medium text-muted-foreground">{label}</span>
             {isLoading ? (
-                <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+                // text-2xl's line box is 32px: 6 (h-6) + 2 × my-1.
+                <Skeleton className="my-1 h-6 w-28" />
             ) : (
                 <p
                     className={cn(

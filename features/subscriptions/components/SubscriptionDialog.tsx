@@ -276,7 +276,7 @@ export function SubscriptionDialog(props: Props) {
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Afecta el balance</label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant={affectsBalance ? "default" : "outline"}
@@ -345,7 +345,7 @@ export function SubscriptionDialog(props: Props) {
         <DialogFooter className={props.mode === "edit" ? "sm:justify-between" : undefined}>
           {props.mode === "edit" && (
             confirmingDelete ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted-foreground">
                   ¿Eliminar esta suscripción?
                 </span>

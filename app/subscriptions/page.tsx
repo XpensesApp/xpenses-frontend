@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/Spinner";
+import { CardListSkeleton } from "@/components/CardListSkeleton";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { useAccountsStore } from "@/store/accounts.store";
 import { SubscriptionCard } from "@/features/subscriptions/components/SubscriptionCard";
@@ -35,7 +35,7 @@ export default function SubscriptionsPage() {
             </div>
 
             {isLoading ? (
-                <Spinner />
+                <CardListSkeleton count={3} />
             ) : (
                 <>
                     <ul className="space-y-2">

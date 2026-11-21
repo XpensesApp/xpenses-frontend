@@ -42,10 +42,12 @@ export function SubscriptionCard({ subscription }: Props) {
 
   return (
     <Card className="py-0">
-      <CardContent className="flex items-center gap-3 px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="truncate font-medium">{subscription.title}</span>
+      {/* flex-wrap: on a narrow screen the three action buttons drop to their
+          own row (right-aligned) instead of squeezing the title to nothing. */}
+      <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+        <div className="min-w-0 flex-1 basis-48">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="min-w-0 truncate font-medium">{subscription.title}</span>
             {subscription.category && (
               <span className="shrink-0 text-xs text-muted-foreground">
                 {subscription.category}
@@ -78,35 +80,37 @@ export function SubscriptionCard({ subscription }: Props) {
             : "Variable"}
         </span>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Registrar pago"
-          title="Registrar pago"
-          onClick={() => setPaymentOpen(true)}
-        >
-          <WalletIcon />
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Registrar pago"
+            title="Registrar pago"
+            onClick={() => setPaymentOpen(true)}
+          >
+            <WalletIcon />
+          </Button>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
-          title={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
-          disabled={toggling}
-          onClick={handleToggleStatus}
-        >
-          {isPaused ? <PlayIcon /> : <PauseIcon />}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
+            title={isPaused ? "Reanudar suscripción" : "Pausar suscripción"}
+            disabled={toggling}
+            onClick={handleToggleStatus}
+          >
+            {isPaused ? <PlayIcon /> : <PauseIcon />}
+          </Button>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Editar suscripción"
-          onClick={() => setEditOpen(true)}
-        >
-          <PencilIcon />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Editar suscripción"
+            onClick={() => setEditOpen(true)}
+          >
+            <PencilIcon />
+          </Button>
+        </div>
       </CardContent>
 
       <SubscriptionDialog
