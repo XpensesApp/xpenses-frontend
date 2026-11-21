@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PauseIcon, PencilIcon, PlayIcon, WalletIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CategoryLabels } from "@/components/CategoryLabels";
 import { cn } from "@/lib/utils";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { TransactionDialog } from "@/features/transactions/components/TransactionDialog";
@@ -48,11 +49,7 @@ export function SubscriptionCard({ subscription }: Props) {
         <div className="min-w-0 flex-1 basis-48">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="min-w-0 truncate font-medium">{subscription.title}</span>
-            {subscription.category && (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {subscription.category}
-              </span>
-            )}
+            <CategoryLabels categories={subscription.categories} />
             <span
               className={cn(
                 "shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none",

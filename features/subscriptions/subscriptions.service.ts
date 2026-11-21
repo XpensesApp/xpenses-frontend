@@ -8,7 +8,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_API_BASE_URL!;
 // frontend's own ("active"/"paused") — the UI, its labels, and the
 // pause/resume icons are all built around "paused", so that's kept as the
 // frontend's internal vocabulary and adapted here at the wire boundary,
-// rather than renaming it (and its lossy-if-multiple `category` similarly).
+// rather than renaming it.
 type WireStatus = "active" | "disabled";
 
 const STATUS_TO_WIRE: Record<SubscriptionStatus, WireStatus> = {
@@ -39,10 +39,7 @@ function fromWire(wire: WireSubscription): Subscription {
     id: wire.subscriptionId,
     title: wire.title,
     amount: wire.amount != null ? Number(wire.amount) : undefined,
-    // The frontend only models a single category per subscription; the
-    // backend supports several. Taking the first is lossy only if something
-    // else ever writes more than one — nothing here does.
-    category: wire.categories[0] ?? "",
+    categories: wire.categories,
     billingDay: wire.billingDay,
     type: wire.type,
     affectsBalance: wire.affectsBalance,
@@ -62,7 +59,7 @@ function toWirePayload(subscription: Omit<Subscription, "id" | "createdAt">) {
     affectsBalance: subscription.affectsBalance,
     status: STATUS_TO_WIRE[subscription.status],
     amount: subscription.amount != null ? String(subscription.amount) : null,
-    categories: subscription.category ? [subscription.category] : [],
+    categories: subscription.categories,
     endDate: subscription.endDate ?? null,
   };
 }

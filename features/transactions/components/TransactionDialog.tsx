@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/MoneyInput";
+import { CategoriesInput, withPendingCategory } from "@/components/CategoriesInput";
 import {
   Dialog,
   DialogContent,
@@ -112,17 +112,6 @@ export function TransactionDialog(props: Props) {
   const transferSourceAccounts = accounts.filter(a => a.type !== "credit");
   const transferDestinationAccounts = accounts.filter(a => a.id !== accountId);
 
-  function addCategory(value: string) {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    setCategories(prev => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
-    setCategoryInput("");
-  }
-
-  function removeCategory(value: string) {
-    setCategories(prev => prev.filter(c => c !== value));
-  }
-
   // Picking a subscription for a NEW entry starts it from that subscription's
   // own data (still editable afterwards), so recording its payment doesn't mean
   // retyping everything. What the subscription doesn't define is left as the
@@ -140,8 +129,8 @@ export function TransactionDialog(props: Props) {
     setTitle(subscription.title);
     setAffectsBalance(subscription.affectsBalance);
     if (subscription.amount != null) setAmount(String(subscription.amount));
-    if (subscription.category) {
-      setCategories([subscription.category]);
+    if (subscription.categories.length > 0) {
+      setCategories([...subscription.categories]);
       setCategoryInput("");
     }
   }
@@ -180,7 +169,7 @@ export function TransactionDialog(props: Props) {
       setType(subscription?.type ?? props.initialType ?? "expense");
       setTitle(subscription?.title ?? props.initialTitle?.trim() ?? "");
       setAmount(subscription?.amount != null ? String(subscription.amount) : "");
-      setCategories(subscription?.category ? [subscription.category] : []);
+      setCategories(subscription ? [...subscription.categories] : []);
       setCategoryInput("");
       setDate(nowLocalDateTime());
       setAffectsBalance(subscription?.affectsBalance ?? true);
@@ -258,12 +247,7 @@ export function TransactionDialog(props: Props) {
     // "Sin suscripción" choice both unlink.
     const resolvedSubscriptionId =
       isTransfer || subscriptionId === NO_SUBSCRIPTION ? undefined : subscriptionId;
-    const pendingCategory = categoryInput.trim();
-    const resolvedCategories = isTransfer
-      ? []
-      : pendingCategory && !categories.includes(pendingCategory)
-        ? [...categories, pendingCategory]
-        : categories;
+    const resolvedCategories = isTransfer ? [] : withPendingCategory(categories, categoryInput);
 
     setSaving(true);
     setError(null);
@@ -447,40 +431,12 @@ export function TransactionDialog(props: Props) {
           </div>
 
           {!isTransfer && (
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Categorías (opcional)</label>
-              <Input
-                value={categoryInput}
-                onChange={e => setCategoryInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addCategory(categoryInput);
-                  }
-                }}
-                placeholder="Escribe y presiona Enter"
-              />
-              {categories.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {categories.map(cat => (
-                    <span
-                      key={cat}
-                      className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
-                    >
-                      {cat}
-                      <button
-                        type="button"
-                        onClick={() => removeCategory(cat)}
-                        aria-label={`Quitar categoría ${cat}`}
-                        className="hover:text-foreground"
-                      >
-                        <XIcon className="size-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CategoriesInput
+              categories={categories}
+              onCategoriesChange={setCategories}
+              input={categoryInput}
+              onInputChange={setCategoryInput}
+            />
           )}
 
           <div className="space-y-1">

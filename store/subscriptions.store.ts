@@ -2,10 +2,11 @@ import { create } from "zustand";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { subscriptionsService } from "@/features/subscriptions/subscriptions.service";
 import { useTransactionsStore } from "@/store/transactions.store";
+import { sameList } from "@/lib/utils";
 
-// Changing a subscription's category makes the backend rewrite the category of
-// every transaction linked to it (paid or pending, any date), and its response
-// says nothing about those — so the loaded transactions are refetched.
+// Changing a subscription's categories makes the backend rewrite the categories
+// of every transaction linked to it (paid or pending, any date), and its
+// response says nothing about those — so the loaded transactions are refetched.
 // Best-effort: the update itself already succeeded by the time this runs.
 async function refreshLinkedTransactions() {
   try {
@@ -45,7 +46,7 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
     set(state => ({
       subscriptions: state.subscriptions.map(s => (s.id === updated.id ? updated : s)),
     }));
-    if (previous && previous.category !== updated.category) await refreshLinkedTransactions();
+    if (previous && !sameList(previous.categories, updated.categories)) await refreshLinkedTransactions();
   },
 
   deleteSubscription: async (id) => {

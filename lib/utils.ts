@@ -12,6 +12,11 @@ export function normalizeForSearch(value: string) {
     .toLowerCase()
 }
 
+/** Whether two string lists hold the same items in the same order. */
+export function sameList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index])
+}
+
 /** The HTTP status a service's `parseError` attached to a thrown Error, if any \u2014 lets a caller special-case e.g. a 409 (changed/deleted concurrently) without string-matching the message. */
 export function errorStatus(error: unknown): number | undefined {
   return error instanceof Error ? (error as Error & { status?: number }).status : undefined

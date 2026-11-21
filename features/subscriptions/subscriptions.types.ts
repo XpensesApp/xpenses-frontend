@@ -7,7 +7,8 @@ export type Subscription = {
   title: string;
   /** Fixed amount billed each cycle. Undefined means variable — the amount is set when paying each generated entry. */
   amount?: number;
-  category: string;
+  /** Categories/tags of this subscription (and of the entries it generates). An empty array means uncategorized. */
+  categories: string[];
   /** Day of the month this subscription is billed (1-31). */
   billingDay: number;
   type: TransactionType;

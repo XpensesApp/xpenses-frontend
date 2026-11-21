@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/MoneyInput";
+import { CategoriesInput, withPendingCategory } from "@/components/CategoriesInput";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { TransactionType } from "@/features/transactions/transactions.types";
+import { sameList } from "@/lib/utils";
 
 type CreateProps = {
   mode: "create";
@@ -41,7 +43,8 @@ export function SubscriptionDialog(props: Props) {
   const [title, setTitle] = useState("");
   const [hasFixedAmount, setHasFixedAmount] = useState(true);
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryInput, setCategoryInput] = useState("");
   const [billingDay, setBillingDay] = useState("");
   const [affectsBalance, setAffectsBalance] = useState(true);
   const [hasEndDate, setHasEndDate] = useState(false);
@@ -64,7 +67,8 @@ export function SubscriptionDialog(props: Props) {
       setTitle(s.title);
       setHasFixedAmount(s.amount != null);
       setAmount(s.amount != null ? String(s.amount) : "");
-      setCategory(s.category);
+      setCategories([...s.categories]);
+      setCategoryInput("");
       setBillingDay(String(s.billingDay));
       setAffectsBalance(s.affectsBalance);
       setHasEndDate(!!s.endDate);
@@ -74,7 +78,8 @@ export function SubscriptionDialog(props: Props) {
       setTitle("");
       setHasFixedAmount(true);
       setAmount("");
-      setCategory("");
+      setCategories([]);
+      setCategoryInput("");
       setBillingDay(String(new Date().getDate()));
       setAffectsBalance(true);
       setHasEndDate(false);
@@ -115,10 +120,16 @@ export function SubscriptionDialog(props: Props) {
       return;
     }
 
-    // The backend rewrites the category of every movement linked to this
+    const resolvedCategories = withPendingCategory(categories, categoryInput);
+
+    // The backend rewrites the categories of every movement linked to this
     // subscription — paid ones and hand-edited ones included — so a change
     // needs an explicit confirmation before anything is saved.
-    if (props.mode === "edit" && category.trim() !== props.subscription.category && !confirmingCategory) {
+    if (
+      props.mode === "edit" &&
+      !sameList(resolvedCategories, props.subscription.categories) &&
+      !confirmingCategory
+    ) {
       setConfirmingDelete(false);
       setConfirmingCategory(true);
       return;
@@ -134,7 +145,7 @@ export function SubscriptionDialog(props: Props) {
           type,
           title: trimmedTitle,
           amount: parsedAmount,
-          category: category.trim(),
+          categories: resolvedCategories,
           billingDay: parsedDay,
           affectsBalance,
           endDate: hasEndDate ? endDate : undefined,
@@ -144,7 +155,7 @@ export function SubscriptionDialog(props: Props) {
           type,
           title: trimmedTitle,
           amount: parsedAmount,
-          category: category.trim(),
+          categories: resolvedCategories,
           billingDay: parsedDay,
           affectsBalance,
           status: "active",
@@ -248,17 +259,20 @@ export function SubscriptionDialog(props: Props) {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Categoría (opcional)</label>
-            <Input
-              value={category}
-              onChange={e => {
-                setCategory(e.target.value);
-                // A confirmation only covers the category it was shown for.
-                setConfirmingCategory(false);
-              }}
-            />
-          </div>
+          {/* A confirmation only covers the categories it was shown for, so any
+              edit here (a chip or the text still being typed) clears it. */}
+          <CategoriesInput
+            categories={categories}
+            onCategoriesChange={next => {
+              setCategories(next);
+              setConfirmingCategory(false);
+            }}
+            input={categoryInput}
+            onInputChange={next => {
+              setCategoryInput(next);
+              setConfirmingCategory(false);
+            }}
+          />
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Día de facturación</label>
@@ -328,8 +342,8 @@ export function SubscriptionDialog(props: Props) {
 
           {confirmingCategory && (
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              Al guardar, la categoría de todos los movimientos vinculados a esta suscripción
-              cambiará a la nueva, incluidos los ya pagados y los que editaste a mano.
+              Al guardar, las categorías de todos los movimientos vinculados a esta suscripción
+              cambiarán a las nuevas, incluidos los ya pagados y los que editaste a mano.
             </p>
           )}
 
