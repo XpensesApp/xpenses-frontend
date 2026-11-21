@@ -15,7 +15,7 @@ import {
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { TransactionType } from "@/features/transactions/transactions.types";
-import { sameList } from "@/lib/utils";
+import { errorMessage, errorStatus, sameList } from "@/lib/utils";
 
 type CreateProps = {
   mode: "create";
@@ -38,6 +38,7 @@ export function SubscriptionDialog(props: Props) {
   const addSubscription = useSubscriptionsStore(state => state.addSubscription);
   const updateSubscription = useSubscriptionsStore(state => state.updateSubscription);
   const deleteSubscription = useSubscriptionsStore(state => state.deleteSubscription);
+  const loadSubscriptions = useSubscriptionsStore(state => state.loadSubscriptions);
 
   const [type, setType] = useState<TransactionType>("expense");
   const [title, setTitle] = useState("");
@@ -165,8 +166,11 @@ export function SubscriptionDialog(props: Props) {
 
       onOpenChange(false);
       onSaved?.();
-    } catch {
-      setError("No se pudo guardar. Intenta de nuevo.");
+    } catch (error) {
+      console.error("Could not save the subscription:", error);
+      setError(errorMessage(error, "No se pudo guardar. Intenta de nuevo."));
+      // Gone from the backend (deleted from another tab or device): resync the list.
+      if (errorStatus(error) === 404) loadSubscriptions().catch(() => {});
     } finally {
       setSaving(false);
     }
@@ -182,8 +186,9 @@ export function SubscriptionDialog(props: Props) {
       await deleteSubscription(props.subscription.id);
       onOpenChange(false);
       onSaved?.();
-    } catch {
-      setError("No se pudo eliminar. Intenta de nuevo.");
+    } catch (error) {
+      console.error("Could not delete the subscription:", error);
+      setError(errorMessage(error, "No se pudo eliminar. Intenta de nuevo."));
       setDeleting(false);
     }
   }

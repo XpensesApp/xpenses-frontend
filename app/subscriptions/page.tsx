@@ -14,9 +14,28 @@ export default function SubscriptionsPage() {
     const loadAccounts = useAccountsStore(state => state.loadAccounts);
     const [createOpen, setCreateOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadFailed, setLoadFailed] = useState(false);
+
+    // A failed load must not read as "no subscriptions yet", so it gets its own
+    // state (with a retry) instead of falling through to the empty-list message.
+    function handleRetry() {
+        setLoadFailed(false);
+        setIsLoading(true);
+        loadSubscriptions()
+            .catch(error => {
+                console.error("Could not load subscriptions:", error);
+                setLoadFailed(true);
+            })
+            .finally(() => setIsLoading(false));
+    }
 
     useEffect(() => {
-        loadSubscriptions().finally(() => setIsLoading(false));
+        loadSubscriptions()
+            .catch(error => {
+                console.error("Could not load subscriptions:", error);
+                setLoadFailed(true);
+            })
+            .finally(() => setIsLoading(false));
         // "Registrar pago" opens the movement form, which preselects the
         // user's preferred account — it needs the accounts loaded. Best-effort:
         // the page itself doesn't depend on them.
@@ -36,6 +55,13 @@ export default function SubscriptionsPage() {
 
             {isLoading ? (
                 <CardListSkeleton count={3} />
+            ) : loadFailed ? (
+                <div className="flex flex-col items-start gap-2 text-sm">
+                    <p className="text-destructive">No se pudieron cargar las suscripciones.</p>
+                    <Button variant="outline" size="sm" onClick={handleRetry}>
+                        Reintentar
+                    </Button>
+                </div>
             ) : (
                 <>
                     <ul className="space-y-2">

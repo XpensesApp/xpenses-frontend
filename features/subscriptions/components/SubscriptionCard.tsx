@@ -5,7 +5,7 @@ import { PauseIcon, PencilIcon, PlayIcon, WalletIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CategoryLabels } from "@/components/CategoryLabels";
-import { cn } from "@/lib/utils";
+import { cn, errorMessage, errorStatus } from "@/lib/utils";
 import { useSubscriptionsStore } from "@/store/subscriptions.store";
 import { TransactionDialog } from "@/features/transactions/components/TransactionDialog";
 import { Subscription } from "../subscriptions.types";
@@ -21,6 +21,7 @@ export function SubscriptionCard({ subscription }: Props) {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const toggleSubscriptionStatus = useSubscriptionsStore(state => state.toggleSubscriptionStatus);
+  const loadSubscriptions = useSubscriptionsStore(state => state.loadSubscriptions);
 
   const isPaused = subscription.status === "paused";
   const hasEnded = !!subscription.endDate && subscription.endDate < todayISODate();
@@ -35,7 +36,13 @@ export function SubscriptionCard({ subscription }: Props) {
       await toggleSubscriptionStatus(subscription.id);
     } catch (error) {
       console.error("Could not change the subscription's status:", error);
-      setToggleError(`No se pudo ${isPaused ? "reanudar" : "pausar"} la suscripción. Intenta de nuevo.`);
+      // The backend's own reason, when it gives one, so a rejection can be told
+      // apart from a network failure instead of every failure reading the same.
+      setToggleError(
+        `No se pudo ${isPaused ? "reanudar" : "pausar"} la suscripción: ${errorMessage(error, "intenta de nuevo.")}`
+      );
+      // Gone from the backend (deleted from another tab or device): resync the list.
+      if (errorStatus(error) === 404) loadSubscriptions().catch(() => {});
     } finally {
       setToggling(false);
     }

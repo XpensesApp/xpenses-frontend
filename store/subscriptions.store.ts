@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { Subscription } from "@/features/subscriptions/subscriptions.types";
 import { subscriptionsService } from "@/features/subscriptions/subscriptions.service";
 import { useTransactionsStore } from "@/store/transactions.store";
-import { sameList } from "@/lib/utils";
+import { errorStatus, sameList } from "@/lib/utils";
 
 // Changing a subscription's categories makes the backend rewrite the categories
 // of every transaction linked to it (paid or pending, any date), and its
@@ -50,7 +50,14 @@ export const useSubscriptionsStore = create<SubscriptionsState>((set, get) => ({
   },
 
   deleteSubscription: async (id) => {
-    await subscriptionsService.delete(id);
+    try {
+      await subscriptionsService.delete(id);
+    } catch (error) {
+      // A 404 means it's already gone (deleted from another tab or device, or a
+      // repeated request) — which is the end state the user asked for, so it
+      // isn't an error; the entry just has to leave the list.
+      if (errorStatus(error) !== 404) throw error;
+    }
     set(state => ({
       subscriptions: state.subscriptions.filter(s => s.id !== id),
     }));

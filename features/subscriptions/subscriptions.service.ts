@@ -23,7 +23,7 @@ const STATUS_FROM_WIRE: Record<WireStatus, SubscriptionStatus> = {
 
 type WireSubscription = {
   title: string;
-  billingDay: number;
+  billingDay: number | string;
   type: TransactionType;
   affectsBalance: boolean;
   status: WireStatus;
@@ -34,16 +34,30 @@ type WireSubscription = {
   endDate: string | null;
 };
 
+// The minimum a response needs to be taken for a subscription at all: without
+// an id and a title there's nothing sensible to show or to edit later.
+function isSubscriptionWire(value: unknown): value is WireSubscription {
+  if (typeof value !== "object" || value === null) return false;
+  const wire = value as Partial<WireSubscription>;
+  return typeof wire.subscriptionId === "string" && typeof wire.title === "string";
+}
+
 function fromWire(wire: WireSubscription): Subscription {
   return {
     id: wire.subscriptionId,
     title: wire.title,
     amount: wire.amount != null ? Number(wire.amount) : undefined,
-    categories: wire.categories,
-    billingDay: wire.billingDay,
+    // Defaulted so a response that leaves the field out (e.g. a PUT echo) can't
+    // put `undefined` in the store, where the cards and the dialog read it.
+    categories: wire.categories ?? [],
+    // Can arrive as a string ("26") — the backend serializes its stored numbers
+    // that way in places, like the decimal-string `amount` — yet its PUT
+    // validation insists on an integer ("Expected `int`, got `str`"). Pausing
+    // re-sends the stored value as-is, so it has to be a number by now.
+    billingDay: Number(wire.billingDay),
     type: wire.type,
     affectsBalance: wire.affectsBalance,
-    status: STATUS_FROM_WIRE[wire.status],
+    status: STATUS_FROM_WIRE[wire.status] ?? "active",
     createdAt: wire.createdAt,
     endDate: wire.endDate ?? undefined,
   };
@@ -74,7 +88,9 @@ async function parseError(res: Response, fallback: string): Promise<never> {
   // revocation) — treat any 401 the same as an expired token.
   if (res.status === 401) forceReauth();
   const body = await res.json().catch(() => null);
-  throw new Error(body?.message ?? fallback);
+  const error = new Error(body?.message ?? fallback) as Error & { status?: number };
+  error.status = res.status;
+  throw error;
 }
 
 export const subscriptionsService = {
@@ -102,15 +118,27 @@ export const subscriptionsService = {
       body: JSON.stringify({
         ...toWirePayload(subscription),
         subscriptionId: subscription.id,
-        // The PUT replaces the whole item and the backend fills in "now" for a
-        // missing createdAt — so without sending it back, every edit or pause
-        // would reset it (and, after a reload, push the subscription to the
-        // top of the newest-first list).
+        // The backend keeps the stored createdAt on its own since its #34 (it
+        // ignores this one), so this is redundant. Still sent so an older
+        // deployment, which filled in "now" for a missing createdAt, can't
+        // reset it on every edit or pause and push the subscription to the top
+        // of the newest-first list.
         createdAt: subscription.createdAt,
       }),
     });
     if (!res.ok) return parseError(res, "Failed to update subscription");
-    return fromWire(await res.json());
+
+    // The PUT is a full replace and it succeeded, so what was sent is what is
+    // stored. If the body that came back isn't a subscription (a bare message,
+    // a wrapper object…), keep what was sent rather than let a title-less,
+    // id-less object replace the real one in the store — the cards and the
+    // edit dialog read those fields.
+    const body: unknown = await res.json().catch(() => null);
+    if (!isSubscriptionWire(body)) {
+      console.warn("PUT /subscriptions answered 200 with an unexpected body; keeping the data that was sent:", body);
+      return subscription;
+    }
+    return fromWire(body);
   },
 
   delete: async (id: string): Promise<void> => {
